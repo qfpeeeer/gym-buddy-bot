@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/qfpeeeer/gym-buddy-bot/app/events"
+	"github.com/qfpeeeer/gym-buddy-bot/app/exercises"
 	"log"
 	"os"
 	"os/signal"
@@ -12,9 +13,9 @@ import (
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-var revision = "local"
-
 func main() {
+	revision := os.Getenv("REVISION")
+
 	fmt.Printf("gym-buddy-bot %s\n", revision)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -40,8 +41,14 @@ func execute(ctx context.Context) error {
 	}
 	tbAPI.Debug = false
 
+	exercisesDB, err := exercises.NewExerciseDB("exercises.json")
+	if err != nil {
+		return fmt.Errorf("can't make exercises db, %w", err)
+	}
+
 	commandHandler := &events.BotCommandHandler{
-		TbAPI: tbAPI,
+		TbAPI:      tbAPI,
+		ExerciseDB: exercisesDB,
 	}
 
 	messageHandler := &events.BotMessageHandler{
@@ -49,7 +56,8 @@ func execute(ctx context.Context) error {
 	}
 
 	callbackQueryHandler := &events.BotCallbackQueryHandler{
-		TbAPI: tbAPI,
+		TbAPI:      tbAPI,
+		ExerciseDB: exercisesDB,
 	}
 
 	listener := events.TelegramListener{
