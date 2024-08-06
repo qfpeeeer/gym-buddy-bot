@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/jmoiron/sqlx"
 	"github.com/qfpeeeer/gym-buddy-bot/app/events"
 	"github.com/qfpeeeer/gym-buddy-bot/app/exercises"
+	"github.com/qfpeeeer/gym-buddy-bot/app/storage"
+	"github.com/qfpeeeer/gym-buddy-bot/app/user"
 	"log"
 	"os"
 	"os/signal"
@@ -33,7 +36,31 @@ func main() {
 }
 
 func execute(ctx context.Context) error {
+	dataFilePath := os.Getenv("DATA_FILE_PATH")
 	telegramToken := os.Getenv("TELEGRAM_TOKEN")
+
+	dataDB, err := storage.NewSqliteDB(dataFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to open sqlite database: %v", err)
+	}
+	defer func(dataDB *sqlx.DB) {
+		err = dataDB.Close()
+		if err != nil {
+			log.Printf("[warn] error closing sqlite database: %v", err)
+		}
+	}(dataDB)
+
+	userStorage, err := storage.NewUserStorage(dataDB)
+	if err != nil {
+		return fmt.Errorf("failed to initialize user storage: %w", err)
+	}
+
+	exerciseStorage, err := storage.NewExerciseStorage(dataDB)
+	if err != nil {
+		return fmt.Errorf("failed to initialize exercise storage: %w", err)
+	}
+
+	userManager := user.NewManager(userStorage, exerciseStorage)
 
 	tbAPI, err := tbapi.NewBotAPI(telegramToken)
 	if err != nil {
@@ -56,8 +83,9 @@ func execute(ctx context.Context) error {
 	}
 
 	callbackQueryHandler := &events.BotCallbackQueryHandler{
-		TbAPI:      tbAPI,
-		ExerciseDB: exercisesDB,
+		TbAPI:       tbAPI,
+		ExerciseDB:  exercisesDB,
+		UserManager: userManager,
 	}
 
 	listener := events.TelegramListener{
