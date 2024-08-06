@@ -26,7 +26,7 @@ personalized workout recommendations. It provides exercise guidance and motivati
 #### 2.2 Logging Today's Exercises
 
 - Display exercises as `[Exercise Name X/Y]` (e.g., `[Push ups 2/4]`)
-- Show exercise description from API-Ninjas
+- Show exercise description from `exercises.json`
 - For each exercise:
     1. `[✅ Completed rep]`
     2. `[🔄 Completed with different weight]`

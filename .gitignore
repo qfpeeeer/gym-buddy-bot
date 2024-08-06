@@ -90,5 +90,6 @@ fabric.properties
 !.idea/runConfigurations
 
 deployments/.env
+static_assets/
 
 # End of https://www.toptal.com/developers/gitignore/api/goland+all
