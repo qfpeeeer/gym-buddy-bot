@@ -222,6 +222,26 @@ func (h *BotCallbackQueryHandler) updateExerciseMessage(messageID int, chatID in
 		return
 	}
 
+	if len(exercises) == 0 {
+		log.Printf("[info] no exercises for user %d", userID)
+
+		messageText := "You have no exercises for today"
+		keyboard := tbapi.NewInlineKeyboardMarkup(
+			tbapi.NewInlineKeyboardRow(
+				tbapi.NewInlineKeyboardButtonData("Get new exercises", "get_exercises"),
+			),
+		)
+
+		msg := tbapi.NewEditMessageText(chatID, messageID, messageText)
+		msg.ReplyMarkup = &keyboard
+
+		if _, err := h.TbAPI.Send(msg); err != nil {
+			log.Printf("[error] failed to update exercises message: %v", err)
+		}
+
+		return
+	}
+
 	messageText := "Here are your exercises for today:\n\n"
 	var keyboardRows [][]tbapi.InlineKeyboardButton
 
