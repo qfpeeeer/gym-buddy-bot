@@ -68,14 +68,14 @@ func execute(ctx context.Context) error {
 	}
 	tbAPI.Debug = false
 
-	exercisesDB, err := exercises.NewExerciseDB("exercises.json")
+	exercisesManager, err := exercises.NewExerciseManager("exercises.json")
 	if err != nil {
 		return fmt.Errorf("can't make exercises db, %w", err)
 	}
 
 	commandHandler := &events.BotCommandHandler{
 		TbAPI:      tbAPI,
-		ExerciseDB: exercisesDB,
+		ExerciseDB: exercisesManager,
 	}
 
 	messageHandler := &events.BotMessageHandler{
@@ -84,7 +84,7 @@ func execute(ctx context.Context) error {
 
 	callbackQueryHandler := &events.BotCallbackQueryHandler{
 		TbAPI:       tbAPI,
-		ExerciseDB:  exercisesDB,
+		ExerciseDB:  exercisesManager,
 		UserManager: userManager,
 	}
 

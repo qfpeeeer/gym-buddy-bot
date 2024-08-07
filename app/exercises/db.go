@@ -22,19 +22,19 @@ type Exercise struct {
 	ID               string   `json:"id"`
 }
 
-// ExerciseDB holds all exercises and provides methods to interact with them
-type ExerciseDB struct {
+// ExerciseManager holds all exercises and provides methods to interact with them
+type ExerciseManager struct {
 	Exercises map[string]Exercise
 }
 
-// NewExerciseDB creates a new ExerciseDB instance
-func NewExerciseDB(filePath string) (*ExerciseDB, error) {
+// NewExerciseManager creates a new ExerciseManager instance
+func NewExerciseManager(filePath string) (*ExerciseManager, error) {
 	exercises, err := LoadExercises(filePath)
 	if err != nil {
 		return nil, err
 	}
 
-	return &ExerciseDB{Exercises: exercises}, nil
+	return &ExerciseManager{Exercises: exercises}, nil
 }
 
 // LoadExercises reads the JSON file and returns a map of Exercise
@@ -53,15 +53,15 @@ func LoadExercises(filePath string) (map[string]Exercise, error) {
 }
 
 // GetRandomExercises returns a slice of random exercises
-func (db *ExerciseDB) GetRandomExercises(count int) []Exercise {
-	if count > len(db.Exercises) {
-		count = len(db.Exercises)
+func (em *ExerciseManager) GetRandomExercises(count int) []Exercise {
+	if count > len(em.Exercises) {
+		count = len(em.Exercises)
 	}
 
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	exerciseSlice := make([]Exercise, 0, len(db.Exercises))
-	for _, exercise := range db.Exercises {
+	exerciseSlice := make([]Exercise, 0, len(em.Exercises))
+	for _, exercise := range em.Exercises {
 		exerciseSlice = append(exerciseSlice, exercise)
 	}
 
@@ -73,8 +73,8 @@ func (db *ExerciseDB) GetRandomExercises(count int) []Exercise {
 }
 
 // GetExerciseByName returns an exercise by its name
-func (db *ExerciseDB) GetExerciseByName(name string) (Exercise, bool) {
-	for _, exercise := range db.Exercises {
+func (em *ExerciseManager) GetExerciseByName(name string) (Exercise, bool) {
+	for _, exercise := range em.Exercises {
 		if exercise.Name == name {
 			return exercise, true
 		}
@@ -83,9 +83,9 @@ func (db *ExerciseDB) GetExerciseByName(name string) (Exercise, bool) {
 }
 
 // GetExercisesByMuscle returns all exercises that target a specific muscle
-func (db *ExerciseDB) GetExercisesByMuscle(muscle string) []Exercise {
+func (em *ExerciseManager) GetExercisesByMuscle(muscle string) []Exercise {
 	var result []Exercise
-	for _, exercise := range db.Exercises {
+	for _, exercise := range em.Exercises {
 		for _, primaryMuscle := range exercise.PrimaryMuscles {
 			if primaryMuscle == muscle {
 				result = append(result, exercise)
@@ -97,9 +97,9 @@ func (db *ExerciseDB) GetExercisesByMuscle(muscle string) []Exercise {
 }
 
 // GetExercisesByEquipment returns all exercises that use specific equipment
-func (db *ExerciseDB) GetExercisesByEquipment(equipment string) []Exercise {
+func (em *ExerciseManager) GetExercisesByEquipment(equipment string) []Exercise {
 	var result []Exercise
-	for _, exercise := range db.Exercises {
+	for _, exercise := range em.Exercises {
 		if exercise.Equipment == equipment {
 			result = append(result, exercise)
 		}
@@ -108,9 +108,9 @@ func (db *ExerciseDB) GetExercisesByEquipment(equipment string) []Exercise {
 }
 
 // GetExercisesByLevel returns all exercises of a specific difficulty level
-func (db *ExerciseDB) GetExercisesByLevel(level string) []Exercise {
+func (em *ExerciseManager) GetExercisesByLevel(level string) []Exercise {
 	var result []Exercise
-	for _, exercise := range db.Exercises {
+	for _, exercise := range em.Exercises {
 		if exercise.Level == level {
 			result = append(result, exercise)
 		}
