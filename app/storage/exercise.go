@@ -122,37 +122,40 @@ func (es *ExerciseStorage) GetTodayExercises(userID int64) ([]exercises.Exercise
 	return dbExercises, nil
 }
 
-func (es *ExerciseStorage) RemoveExercise(userID int64, exerciseIndex int) error {
+func (es *ExerciseStorage) RemoveExercise(userID int64, exercise exercises.Exercise) error {
 	_, err := es.db.Exec(`
         DELETE FROM user_exercises 
-        WHERE user_id = ? AND id IN (
-            SELECT id FROM user_exercises 
-            WHERE user_id = ? 
-            ORDER BY id 
-            LIMIT 1 OFFSET ?
-        )
-    `, userID, userID, exerciseIndex)
-	return err
+        WHERE user_id = ? 
+        AND exercise_id = ? 
+        AND exercise_name = ? 
+        AND exercise_category = ?
+    `, userID, exercise.ID, exercise.Name, exercise.Category)
+
+	if err != nil {
+		return fmt.Errorf("failed to remove exercise: %w", err)
+	}
+
+	return nil
 }
 
-func (es *ExerciseStorage) ReplaceExercise(userID int64, oldExerciseIndex int, newExercise exercises.Exercise) error {
+func (es *ExerciseStorage) ReplaceExercise(userID int64, oldExercise, newExercise exercises.Exercise) error {
 	_, err := es.db.NamedExec(`
         UPDATE user_exercises 
-        SET exercise_id = :exercise_id, 
-            exercise_name = :exercise_name, 
-            exercise_category = :exercise_category 
-        WHERE user_id = :user_id AND id IN (
-            SELECT id FROM user_exercises 
-            WHERE user_id = :user_id 
-            ORDER BY id 
-            LIMIT 1 OFFSET :offset
-        )
+        SET exercise_id = :new_exercise_id, 
+            exercise_name = :new_exercise_name, 
+            exercise_category = :new_exercise_category 
+        WHERE user_id = :user_id 
+        AND exercise_id = :old_exercise_id
+        AND exercise_name = :old_exercise_name
+        AND exercise_category = :old_exercise_category
     `, map[string]interface{}{
-		"exercise_id":       newExercise.ID,
-		"exercise_name":     newExercise.Name,
-		"exercise_category": newExercise.Category,
-		"user_id":           userID,
-		"offset":            oldExerciseIndex,
+		"new_exercise_id":       newExercise.ID,
+		"new_exercise_name":     newExercise.Name,
+		"new_exercise_category": newExercise.Category,
+		"old_exercise_id":       oldExercise.ID,
+		"old_exercise_name":     oldExercise.Name,
+		"old_exercise_category": oldExercise.Category,
+		"user_id":               userID,
 	})
 	return err
 }

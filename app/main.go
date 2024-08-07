@@ -17,9 +17,9 @@ import (
 )
 
 func main() {
-	revision := os.Getenv("REVISION")
+	environment := os.Getenv("ENVIRONMENT")
 
-	fmt.Printf("gym-buddy-bot %s\n", revision)
+	fmt.Printf("gym-buddy-bot %s\n", environment)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		stop := make(chan os.Signal, 1)
@@ -74,8 +74,8 @@ func execute(ctx context.Context) error {
 	}
 
 	commandHandler := &events.BotCommandHandler{
-		TbAPI:      tbAPI,
-		ExerciseDB: exercisesManager,
+		TbAPI:           tbAPI,
+		ExerciseManager: exercisesManager,
 	}
 
 	messageHandler := &events.BotMessageHandler{
@@ -83,9 +83,9 @@ func execute(ctx context.Context) error {
 	}
 
 	callbackQueryHandler := &events.BotCallbackQueryHandler{
-		TbAPI:       tbAPI,
-		ExerciseDB:  exercisesManager,
-		UserManager: userManager,
+		TbAPI:           tbAPI,
+		ExerciseManager: exercisesManager,
+		UserManager:     userManager,
 	}
 
 	listener := events.TelegramListener{

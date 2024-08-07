@@ -32,12 +32,13 @@ type UserManager interface {
 	EnsureUser(telegramID int64) error
 	SetTodayExercises(telegramID int64, exercises []exercises.Exercise) error
 	GetTodayExercises(telegramID int64) ([]exercises.Exercise, error)
-	RemoveExercise(telegramID int64, exerciseIndex int) error
-	ReplaceExercise(telegramID int64, oldExerciseIndex int, newExercise exercises.Exercise) error
+	RemoveExercise(telegramID int64, exercise exercises.Exercise) error
+	ReplaceExercise(telegramID int64, oldExercise, newExercise exercises.Exercise) error
 }
 
 type ExercisesManager interface {
 	GetRandomExercises(count int) []exercises.Exercise
+	GetExerciseByID(id string) (exercises.Exercise, bool)
 }
 
 // send a message to the telegram as markdown first and if failed - as plain text

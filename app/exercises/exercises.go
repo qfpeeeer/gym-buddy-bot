@@ -117,3 +117,9 @@ func (em *ExerciseManager) GetExercisesByLevel(level string) []Exercise {
 	}
 	return result
 }
+
+// GetExerciseByID returns an exercise by its ID
+func (em *ExerciseManager) GetExerciseByID(id string) (Exercise, bool) {
+	exercise, found := em.Exercises[id]
+	return exercise, found
+}

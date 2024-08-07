@@ -13,8 +13,8 @@ type Storage interface {
 type ExerciseStorage interface {
 	SetTodayExercises(telegramID int64, exercises []exercises.Exercise) error
 	GetTodayExercises(telegramID int64) ([]exercises.Exercise, error)
-	RemoveExercise(telegramID int64, exerciseIndex int) error
-	ReplaceExercise(telegramID int64, oldExerciseIndex int, newExercise exercises.Exercise) error
+	RemoveExercise(telegramID int64, exercise exercises.Exercise) error
+	ReplaceExercise(telegramID int64, oldExercise, newExercise exercises.Exercise) error
 }
 
 // Manager handles user-related operations
@@ -47,11 +47,11 @@ func (m *Manager) GetTodayExercises(telegramID int64) ([]exercises.Exercise, err
 }
 
 // RemoveExercise removes an exercise from a user's today exercises
-func (m *Manager) RemoveExercise(telegramID int64, exerciseIndex int) error {
-	return m.exerciseStorage.RemoveExercise(telegramID, exerciseIndex)
+func (m *Manager) RemoveExercise(telegramID int64, exercise exercises.Exercise) error {
+	return m.exerciseStorage.RemoveExercise(telegramID, exercise)
 }
 
 // ReplaceExercise replaces an exercise in a user's today exercises
-func (m *Manager) ReplaceExercise(telegramID int64, oldExerciseIndex int, newExercise exercises.Exercise) error {
-	return m.exerciseStorage.ReplaceExercise(telegramID, oldExerciseIndex, newExercise)
+func (m *Manager) ReplaceExercise(telegramID int64, oldExercise, newExercise exercises.Exercise) error {
+	return m.exerciseStorage.ReplaceExercise(telegramID, oldExercise, newExercise)
 }

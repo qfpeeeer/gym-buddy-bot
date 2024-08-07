@@ -3,13 +3,12 @@ package events
 import (
 	"context"
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/qfpeeeer/gym-buddy-bot/app/exercises"
 	"log"
 )
 
 type BotCommandHandler struct {
-	TbAPI      TbAPI
-	ExerciseDB *exercises.ExerciseDB
+	TbAPI           TbAPI
+	ExerciseManager ExercisesManager
 }
 
 func (h *BotCommandHandler) HandleCommands(ctx context.Context, update tbapi.Update) {
