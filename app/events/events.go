@@ -4,7 +4,8 @@ import (
 	"context"
 	"fmt"
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/qfpeeeer/gym-buddy-bot/app/exercises"
+	"github.com/qfpeeeer/gym-buddy-bot/app/services/exercises"
+	"golang.org/x/oauth2"
 	"log"
 )
 
@@ -34,11 +35,19 @@ type UserManager interface {
 	GetTodayExercises(telegramID int64) ([]exercises.Exercise, error)
 	RemoveExercise(telegramID int64, exercise exercises.Exercise) error
 	ReplaceExercise(telegramID int64, oldExercise, newExercise exercises.Exercise) error
+	StoreGoogleSheetID(telegramID int64, sheetID string) error
+	SetUserState(telegramID int64, state string) error
+	GetUserState(telegramID int64) (string, error)
+	GetGoogleSheetsToken(telegramID int64) (*oauth2.Token, error)
 }
 
 type ExercisesManager interface {
 	GetRandomExercises(count int) []exercises.Exercise
 	GetExerciseByID(id string) (exercises.Exercise, bool)
+}
+
+type GoogleSheetsService interface {
+	GetAuthorizationURL(userID int64) (string, error)
 }
 
 // send a message to the telegram as markdown first and if failed - as plain text

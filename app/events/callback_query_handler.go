@@ -10,9 +10,10 @@ import (
 )
 
 type BotCallbackQueryHandler struct {
-	TbAPI           TbAPI
-	ExerciseManager ExercisesManager
-	UserManager     UserManager
+	TbAPI               TbAPI
+	ExerciseManager     ExercisesManager
+	UserManager         UserManager
+	GoogleSheetsService GoogleSheetsService
 }
 
 func (h *BotCallbackQueryHandler) HandleCallbackQuery(ctx context.Context, update tbapi.Update) {
@@ -33,6 +34,10 @@ func (h *BotCallbackQueryHandler) HandleCallbackQuery(ctx context.Context, updat
 		h.handleReplaceExercise(query)
 	case strings.HasPrefix(data, "back_to_exercises"):
 		h.handleBackToExercises(query)
+	case data == "reconnect_sheets":
+		h.handleReconnectSheets(query)
+	case data == "change_sheet":
+		h.handleChangeSheet(query)
 		// ... other callback queries
 	}
 }
@@ -257,5 +262,54 @@ func (h *BotCallbackQueryHandler) updateExerciseMessage(messageID int, chatID in
 
 	if _, err := h.TbAPI.Send(msg); err != nil {
 		log.Printf("[error] failed to update exercises message: %v", err)
+	}
+}
+
+func (h *BotCallbackQueryHandler) handleReconnectSheets(query *tbapi.CallbackQuery) {
+	authURL, err := h.GoogleSheetsService.GetAuthorizationURL(query.From.ID)
+	if err != nil {
+		log.Printf("[error] failed to generate authorization URL: %v", err)
+		h.sendErrorMessage(query.Message.Chat.ID, "Sorry, there was an error. Please try again later.")
+		return
+	}
+
+	keyboard := tbapi.NewInlineKeyboardMarkup(
+		tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonURL("Reauthorize Google Sheets", authURL),
+		),
+	)
+
+	msg := tbapi.NewEditMessageTextAndMarkup(
+		query.Message.Chat.ID,
+		query.Message.MessageID,
+		"Please click the button below to reauthorize access to your Google Sheets.",
+		keyboard,
+	)
+	if _, err := h.TbAPI.Send(msg); err != nil {
+		log.Printf("[error] failed to send message: %v", err)
+	}
+
+	err = h.UserManager.SetUserState(query.From.ID, "waiting_for_auth")
+	if err != nil {
+		log.Printf("[error] failed to set user state: %v", err)
+	}
+}
+
+func (h *BotCallbackQueryHandler) handleChangeSheet(query *tbapi.CallbackQuery) {
+	msg := tbapi.NewMessage(query.Message.Chat.ID, "Please send me the ID of your new Google Sheet. You can find this in the URL of your sheet: https://docs.google.com/spreadsheets/d/YOUR-SHEET-ID-IS-HERE/edit")
+	if _, err := h.TbAPI.Send(msg); err != nil {
+		log.Printf("[error] failed to send message: %v", err)
+	}
+
+	err := h.UserManager.SetUserState(query.From.ID, "waiting_for_sheet_id")
+	if err != nil {
+		log.Printf("[error] failed to set user state: %v", err)
+	}
+}
+
+func (h *BotCallbackQueryHandler) sendErrorMessage(chatID int64, text string) {
+	msg := tbapi.NewMessage(chatID, text)
+	if _, err := h.TbAPI.Send(msg); err != nil {
+		log.Printf("[error] failed to send message: %v", err)
 	}
 }

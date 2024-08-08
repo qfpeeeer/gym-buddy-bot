@@ -3,7 +3,7 @@ package storage
 import (
 	"fmt"
 	"github.com/jmoiron/sqlx"
-	"github.com/qfpeeeer/gym-buddy-bot/app/exercises"
+	"github.com/qfpeeeer/gym-buddy-bot/app/services/exercises"
 	"log"
 )
 

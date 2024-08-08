@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"github.com/jmoiron/sqlx"
 	"github.com/qfpeeeer/gym-buddy-bot/app/events"
-	"github.com/qfpeeeer/gym-buddy-bot/app/exercises"
+	"github.com/qfpeeeer/gym-buddy-bot/app/services/exercises"
+	services "github.com/qfpeeeer/gym-buddy-bot/app/services/googleSheets"
+	"github.com/qfpeeeer/gym-buddy-bot/app/services/user"
 	"github.com/qfpeeeer/gym-buddy-bot/app/storage"
-	"github.com/qfpeeeer/gym-buddy-bot/app/user"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -39,6 +41,10 @@ func execute(ctx context.Context) error {
 	dataFilePath := os.Getenv("DATA_FILE_PATH")
 	telegramToken := os.Getenv("TELEGRAM_TOKEN")
 
+	googleSheetsClientID := os.Getenv("GOOGLE_SHEETS_CLIENT_ID")
+	googleSheetsClientSecret := os.Getenv("GOOGLE_SHEETS_CLIENT_SECRET")
+	googleSheetsRedirectURL := "http://localhost:8080/oauth2callback" // TODO: change to the actual redirect URL
+
 	dataDB, err := storage.NewSqliteDB(dataFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to open sqlite database: %v", err)
@@ -60,7 +66,17 @@ func execute(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize exercise storage: %w", err)
 	}
 
-	userManager := user.NewManager(userStorage, exerciseStorage)
+	googleSheetsStorage, err := storage.NewGoogleSheetsStorage(dataDB)
+	if err != nil {
+		return fmt.Errorf("failed to initialize google sheets storage: %w", err)
+	}
+
+	userStateStorage, err := storage.NewUserStateStorage(dataDB)
+	if err != nil {
+		return fmt.Errorf("failed to initialize user state storage: %w", err)
+	}
+
+	userManager := user.NewManager(userStorage, exerciseStorage, googleSheetsStorage, userStateStorage)
 
 	tbAPI, err := tbapi.NewBotAPI(telegramToken)
 	if err != nil {
@@ -73,19 +89,31 @@ func execute(ctx context.Context) error {
 		return fmt.Errorf("can't make exercises db, %w", err)
 	}
 
+	googleSheetsService := services.NewGoogleSheetsService(
+		googleSheetsClientID,
+		googleSheetsClientSecret,
+		googleSheetsRedirectURL,
+		userManager,
+		tbAPI,
+	)
+
 	commandHandler := &events.BotCommandHandler{
-		TbAPI:           tbAPI,
-		ExerciseManager: exercisesManager,
+		TbAPI:               tbAPI,
+		ExerciseManager:     exercisesManager,
+		UserManager:         userManager,
+		GoogleSheetsService: googleSheetsService,
 	}
 
 	messageHandler := &events.BotMessageHandler{
-		TbAPI: tbAPI,
+		TbAPI:       tbAPI,
+		UserManager: userManager,
 	}
 
 	callbackQueryHandler := &events.BotCallbackQueryHandler{
-		TbAPI:           tbAPI,
-		ExerciseManager: exercisesManager,
-		UserManager:     userManager,
+		TbAPI:               tbAPI,
+		ExerciseManager:     exercisesManager,
+		UserManager:         userManager,
+		GoogleSheetsService: googleSheetsService,
 	}
 
 	listener := events.TelegramListener{
@@ -94,6 +122,13 @@ func execute(ctx context.Context) error {
 		MessageHandler:       messageHandler,
 		CallbackQueryHandler: callbackQueryHandler,
 	}
+
+	http.HandleFunc("/oauth2callback", googleSheetsService.HandleRedirect)
+	go func() {
+		if err := http.ListenAndServe(":8080", nil); err != nil {
+			log.Fatalf("Failed to start server: %v", err)
+		}
+	}()
 
 	err = listener.StartListening(ctx)
 	if err != nil {
