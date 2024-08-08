@@ -55,7 +55,8 @@ func (h *BotCommandHandler) sendMainMenu(chatID int64) {
 
 	keyboard := tbapi.NewInlineKeyboardMarkup(
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Get today's exercises", "get_exercises"),
+			tbapi.NewInlineKeyboardButtonData("Get new exercises", "get_new_exercises"),
+			tbapi.NewInlineKeyboardButtonData("Get today's exercises", "get_today_exercises"),
 		),
 	)
 

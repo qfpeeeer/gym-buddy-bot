@@ -24,8 +24,10 @@ func (h *BotCallbackQueryHandler) HandleCallbackQuery(ctx context.Context, updat
 	log.Printf("[info] received callback query from user %d: %s", userID, data)
 
 	switch {
-	case data == "get_exercises":
-		h.handleGetExercises(query)
+	case data == "get_today_exercises":
+		h.updateExerciseMessage(query.Message.MessageID, query.Message.Chat.ID, userID)
+	case data == "get_new_exercises":
+		h.handleGetNewExercises(query)
 	case strings.HasPrefix(data, "exercise_info_"):
 		h.handleExerciseInfo(query)
 	case strings.HasPrefix(data, "remove_exercise_"):
@@ -42,7 +44,7 @@ func (h *BotCallbackQueryHandler) HandleCallbackQuery(ctx context.Context, updat
 	}
 }
 
-func (h *BotCallbackQueryHandler) handleGetExercises(query *tbapi.CallbackQuery) {
+func (h *BotCallbackQueryHandler) handleGetNewExercises(query *tbapi.CallbackQuery) {
 	userID := query.From.ID
 	todayExercises := h.ExerciseManager.GetRandomExercises(5)
 
@@ -233,7 +235,7 @@ func (h *BotCallbackQueryHandler) updateExerciseMessage(messageID int, chatID in
 		messageText := "You have no exercises for today"
 		keyboard := tbapi.NewInlineKeyboardMarkup(
 			tbapi.NewInlineKeyboardRow(
-				tbapi.NewInlineKeyboardButtonData("Get new exercises", "get_exercises"),
+				tbapi.NewInlineKeyboardButtonData("Get new exercises", "get_new_exercises"),
 			),
 		)
 
