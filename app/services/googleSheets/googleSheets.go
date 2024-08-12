@@ -86,26 +86,30 @@ func (s *GoogleSheetsService) HandleRedirect(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Create and format the new workout sheet
+	sheetID, err := s.CreateAndFormatWorkoutSheet(userID)
+	if err != nil {
+		log.Printf("[error] failed to create and format workout sheet: %v", err)
+		http.Error(w, "Failed to create workout sheet", http.StatusInternalServerError)
+		return
+	}
+
+	// Store the sheet ID for the user
+	err = s.UserManager.StoreGoogleSheetID(userID, sheetID)
+	if err != nil {
+		log.Printf("[error] failed to store sheet ID: %v", err)
+		http.Error(w, "Failed to store sheet ID", http.StatusInternalServerError)
+		return
+	}
+
 	// Send a message to the user via the bot
-	_, err = s.TbAPI.Send(tbapi.NewMessage(userID, "Google Sheets successfully connected! Now, please share your Google Sheet with this email address: your-service-account@your-project.iam.gserviceaccount.com"))
+	_, err = s.TbAPI.Send(tbapi.NewMessage(userID, fmt.Sprintf("Google Sheets successfully connected! A new workout tracker sheet has been created for you. You can access it here: https://docs.google.com/spreadsheets/d/%s", sheetID)))
 	if err != nil {
 		log.Printf("[error] failed to send message: %v", err)
-	}
-
-	// Prompt user to send the Sheet ID
-	_, err = s.TbAPI.Send(tbapi.NewMessage(userID, "Great! Now, please send me the ID of your Google Sheet. You can find this in the URL of your sheet: https://docs.google.com/spreadsheets/d/YOUR-SHEET-ID-IS-HERE/edit"))
-	if err != nil {
-		log.Printf("[error] failed to send message: %v", err)
-	}
-
-	// Set user state to waiting for sheet ID
-	err = s.UserManager.SetUserState(userID, "waiting_for_sheet_id")
-	if err != nil {
-		log.Printf("[error] failed to set user state: %v", err)
 	}
 
 	// Respond to the user's browser
-	_, err = fmt.Fprintf(w, "Authorization successful! You can close this window and return to the Telegram bot.")
+	_, err = fmt.Fprintf(w, "Authorization successful! A new workout tracker sheet has been created for you. You can close this window and return to the Telegram bot.")
 	if err != nil {
 		log.Printf("[error] failed to write response: %v", err)
 	}
@@ -159,4 +163,110 @@ func (s *GoogleSheetsService) RefreshTokenIfNeeded(userID int64) error {
 	}
 
 	return nil
+}
+
+func getStringPointer(s string) *string {
+	return &s
+}
+
+func (s *GoogleSheetsService) CreateAndFormatWorkoutSheet(userID int64) (string, error) {
+	sheetsService, err := s.GetSheetsService(userID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get sheets service: %w", err)
+	}
+
+	// Create a new spreadsheet
+	spreadsheet := &sheets.Spreadsheet{
+		Properties: &sheets.SpreadsheetProperties{
+			Title: "My Workout Tracker",
+		},
+		Sheets: []*sheets.Sheet{
+			{
+				Properties: &sheets.SheetProperties{
+					Title: "Workout Log",
+				},
+			},
+		},
+	}
+
+	createdSpreadsheet, err := sheetsService.Spreadsheets.Create(spreadsheet).Do()
+	if err != nil {
+		return "", fmt.Errorf("failed to create spreadsheet: %w", err)
+	}
+
+	sheetID := createdSpreadsheet.SpreadsheetId
+
+	// Get the ID of the first sheet
+	firstSheetId := createdSpreadsheet.Sheets[0].Properties.SheetId
+
+	// Format the sheet
+	requests := []*sheets.Request{
+		// Add headers
+		{
+			UpdateCells: &sheets.UpdateCellsRequest{
+				Rows: []*sheets.RowData{
+					{
+						Values: []*sheets.CellData{
+							{UserEnteredValue: &sheets.ExtendedValue{StringValue: getStringPointer("Date")}},
+							{UserEnteredValue: &sheets.ExtendedValue{StringValue: getStringPointer("Exercise")}},
+							{UserEnteredValue: &sheets.ExtendedValue{StringValue: getStringPointer("Sets")}},
+							{UserEnteredValue: &sheets.ExtendedValue{StringValue: getStringPointer("Reps")}},
+							{UserEnteredValue: &sheets.ExtendedValue{StringValue: getStringPointer("Weight")}},
+							{UserEnteredValue: &sheets.ExtendedValue{StringValue: getStringPointer("Notes")}},
+						},
+					},
+				},
+				Fields: "*",
+				Range: &sheets.GridRange{
+					SheetId:       firstSheetId,
+					StartRowIndex: 0,
+					EndRowIndex:   1,
+				},
+			},
+		},
+		// Format headers
+		{
+			RepeatCell: &sheets.RepeatCellRequest{
+				Range: &sheets.GridRange{
+					SheetId:       firstSheetId,
+					StartRowIndex: 0,
+					EndRowIndex:   1,
+				},
+				Cell: &sheets.CellData{
+					UserEnteredFormat: &sheets.CellFormat{
+						TextFormat: &sheets.TextFormat{
+							Bold: true,
+						},
+						BackgroundColor: &sheets.Color{
+							Red:   0.8,
+							Green: 0.8,
+							Blue:  0.8,
+						},
+					},
+				},
+				Fields: "userEnteredFormat(textFormat,backgroundColor)",
+			},
+		},
+		// Auto-resize columns
+		{
+			AutoResizeDimensions: &sheets.AutoResizeDimensionsRequest{
+				Dimensions: &sheets.DimensionRange{
+					SheetId:    firstSheetId,
+					Dimension:  "COLUMNS",
+					StartIndex: 0,
+					EndIndex:   6,
+				},
+			},
+		},
+	}
+
+	_, err = sheetsService.Spreadsheets.BatchUpdate(sheetID, &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: requests,
+	}).Context(context.Background()).Do()
+
+	if err != nil {
+		return "", fmt.Errorf("failed to format spreadsheet: %w", err)
+	}
+
+	return sheetID, nil
 }

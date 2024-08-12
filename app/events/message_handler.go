@@ -28,10 +28,9 @@ func (h *BotMessageHandler) HandleMessages(ctx context.Context, update tbapi.Upd
 	}
 
 	switch state {
-	case "waiting_for_sheet_id":
-		h.handleSheetID(update.Message.Chat.ID, userID, messageText)
+	// Remove the "waiting_for_sheet_id" case as it's no longer needed
 	default:
-		h.sendMessage(update.Message.Chat.ID, "I'm not sure how to process that message. You can use /connect to start connecting your Google Sheet.")
+		h.sendMessage(update.Message.Chat.ID, "I'm not sure how to process that message. You can use /connect_sheets to start connecting your Google Sheet.")
 	}
 }
 

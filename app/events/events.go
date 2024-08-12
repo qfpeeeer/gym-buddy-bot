@@ -39,6 +39,7 @@ type UserManager interface {
 	SetUserState(telegramID int64, state string) error
 	GetUserState(telegramID int64) (string, error)
 	GetGoogleSheetsToken(telegramID int64) (*oauth2.Token, error)
+	GetGoogleSheetID(telegramID int64) (string, error)
 }
 
 type ExercisesManager interface {

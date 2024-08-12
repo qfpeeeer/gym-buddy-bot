@@ -73,17 +73,24 @@ func (h *BotCommandHandler) handleConnectSheets(chatID int64, userID int64) {
 	token, err := h.UserManager.GetGoogleSheetsToken(userID)
 	if err == nil && token != nil {
 		// User is already connected
+		sheetID, err := h.UserManager.GetGoogleSheetID(userID)
+		if err != nil {
+			log.Printf("[error] failed to get sheet ID for user %d: %v", userID, err)
+			h.sendErrorMessage(chatID, "An error occurred while retrieving your sheet information. Please try reconnecting.")
+			return
+		}
+
 		keyboard := tbapi.NewInlineKeyboardMarkup(
 			tbapi.NewInlineKeyboardRow(
 				tbapi.NewInlineKeyboardButtonData("Reconnect", "reconnect_sheets"),
-				tbapi.NewInlineKeyboardButtonData("Change Sheet", "change_sheet"),
+				tbapi.NewInlineKeyboardButtonURL("Open Sheet", "https://docs.google.com/spreadsheets/d/"+sheetID),
 			),
 		)
 
 		msg := tbapi.NewMessage(chatID, "You're already connected to Google Sheets. What would you like to do?")
 		msg.ReplyMarkup = keyboard
 		if _, err := h.TbAPI.Send(msg); err != nil {
-			log.Printf("[error] failed to send start message: %v", err)
+			log.Printf("[error] failed to send message: %v", err)
 		}
 		return
 	}
@@ -103,10 +110,10 @@ func (h *BotCommandHandler) handleConnectSheets(chatID int64, userID int64) {
 		),
 	)
 
-	msg := tbapi.NewMessage(chatID, "Please click the button below to authorize access to your Google Sheets. After authorization, you'll be redirected to a page with further instructions.")
+	msg := tbapi.NewMessage(chatID, "Please click the button below to authorize access to your Google Sheets. A new workout tracker sheet will be created for you automatically.")
 	msg.ReplyMarkup = keyboard
 	if _, err = h.TbAPI.Send(msg); err != nil {
-		log.Printf("[error] failed to send start message: %v", err)
+		log.Printf("[error] failed to send message: %v", err)
 	}
 
 	// Set user state to waiting for auth
@@ -115,7 +122,6 @@ func (h *BotCommandHandler) handleConnectSheets(chatID int64, userID int64) {
 		log.Printf("[error] failed to set user state: %v", err)
 	}
 }
-
 func (h *BotCommandHandler) sendErrorMessage(chatID int64, text string) {
 	msg := tbapi.NewMessage(chatID, text)
 	if _, err := h.TbAPI.Send(msg); err != nil {
