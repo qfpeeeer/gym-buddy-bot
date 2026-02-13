@@ -8,6 +8,9 @@ import (
 // Storage interface defines the methods for user-related storage operations
 type Storage interface {
 	EnsureUser(telegramID int64) error
+	SetHevyAPIKey(telegramID int64, key string) error
+	GetHevyAPIKey(telegramID int64) (string, error)
+	ClearHevyAPIKey(telegramID int64) error
 }
 
 // ExerciseStorage interface defines the methods for exercise-related storage operations
@@ -79,4 +82,28 @@ func (m *Manager) SaveWorkouts(telegramID int64, workouts []strong.Workout) (int
 // GetRecentWorkouts returns the N most recent workouts for a user
 func (m *Manager) GetRecentWorkouts(telegramID int64, limit int) ([]strong.Workout, error) {
 	return m.workoutStorage.GetRecentWorkouts(telegramID, limit)
+}
+
+// SetHevyAPIKey stores the Hevy API key for a user
+func (m *Manager) SetHevyAPIKey(telegramID int64, key string) error {
+	return m.userStorage.SetHevyAPIKey(telegramID, key)
+}
+
+// GetHevyAPIKey retrieves the Hevy API key for a user
+func (m *Manager) GetHevyAPIKey(telegramID int64) (string, error) {
+	return m.userStorage.GetHevyAPIKey(telegramID)
+}
+
+// ClearHevyAPIKey removes the Hevy API key for a user
+func (m *Manager) ClearHevyAPIKey(telegramID int64) error {
+	return m.userStorage.ClearHevyAPIKey(telegramID)
+}
+
+// IsHevyConnected checks if a user has a Hevy API key stored
+func (m *Manager) IsHevyConnected(telegramID int64) (bool, error) {
+	key, err := m.userStorage.GetHevyAPIKey(telegramID)
+	if err != nil {
+		return false, err
+	}
+	return key != "", nil
 }

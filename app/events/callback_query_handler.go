@@ -10,9 +10,10 @@ import (
 )
 
 type BotCallbackQueryHandler struct {
-	TbAPI           TbAPI
-	ExerciseManager ExercisesManager
-	UserManager     UserManager
+	TbAPI              TbAPI
+	ExerciseManager    ExercisesManager
+	UserManager        UserManager
+	SetAwaitingHevyKey func(userID, chatID int64)
 }
 
 func (h *BotCallbackQueryHandler) HandleCallbackQuery(ctx context.Context, update tbapi.Update) {
@@ -27,6 +28,8 @@ func (h *BotCallbackQueryHandler) HandleCallbackQuery(ctx context.Context, updat
 		h.handleGetExercises(query)
 	case data == "get_history":
 		h.handleGetHistory(query)
+	case data == "connect_hevy":
+		h.handleConnectHevy(query)
 	case strings.HasPrefix(data, "exercise_info_"):
 		h.handleExerciseInfo(query)
 	case strings.HasPrefix(data, "remove_exercise_"):
@@ -35,6 +38,24 @@ func (h *BotCallbackQueryHandler) HandleCallbackQuery(ctx context.Context, updat
 		h.handleReplaceExercise(query)
 	case strings.HasPrefix(data, "back_to_exercises"):
 		h.handleBackToExercises(query)
+	}
+}
+
+func (h *BotCallbackQueryHandler) handleConnectHevy(query *tbapi.CallbackQuery) {
+	userID := query.From.ID
+	chatID := query.Message.Chat.ID
+
+	callback := tbapi.NewCallback(query.ID, "")
+	if _, err := h.TbAPI.Request(callback); err != nil {
+		log.Printf("[error] failed to answer callback query: %v", err)
+	}
+
+	text := "Send me your Hevy API key.\n\nGet it from: hevy.com/settings > Developer section.\nRequires Hevy Pro subscription."
+	msg := tbapi.NewMessage(chatID, text)
+	send(msg, h.TbAPI)
+
+	if h.SetAwaitingHevyKey != nil {
+		h.SetAwaitingHevyKey(userID, chatID)
 	}
 }
 

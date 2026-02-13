@@ -3,15 +3,16 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+
 	"github.com/jmoiron/sqlx"
 	"github.com/qfpeeeer/gym-buddy-bot/app/events"
 	"github.com/qfpeeeer/gym-buddy-bot/app/exercises"
 	"github.com/qfpeeeer/gym-buddy-bot/app/storage"
 	"github.com/qfpeeeer/gym-buddy-bot/app/user"
-	"log"
-	"os"
-	"os/signal"
-	"syscall"
 
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -78,22 +79,24 @@ func execute(ctx context.Context) error {
 		return fmt.Errorf("can't make exercises db, %w", err)
 	}
 
-	commandHandler := &events.BotCommandHandler{
-		TbAPI:           tbAPI,
-		ExerciseManager: exercisesManager,
-		UserManager:     userManager,
-	}
-
 	messageHandler := &events.BotMessageHandler{
 		TbAPI:         tbAPI,
 		UserManager:   userManager,
 		TelegramToken: telegramToken,
 	}
 
+	commandHandler := &events.BotCommandHandler{
+		TbAPI:              tbAPI,
+		ExerciseManager:    exercisesManager,
+		UserManager:        userManager,
+		SetAwaitingHevyKey: messageHandler.SetAwaitingHevyKey,
+	}
+
 	callbackQueryHandler := &events.BotCallbackQueryHandler{
-		TbAPI:           tbAPI,
-		ExerciseManager: exercisesManager,
-		UserManager:     userManager,
+		TbAPI:              tbAPI,
+		ExerciseManager:    exercisesManager,
+		UserManager:        userManager,
+		SetAwaitingHevyKey: messageHandler.SetAwaitingHevyKey,
 	}
 
 	listener := events.TelegramListener{

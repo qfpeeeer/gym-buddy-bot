@@ -35,6 +35,7 @@ Set in `deployments/.env` (see `deployments/example.env`):
 - `TELEGRAM_TOKEN` — Telegram bot token (required)
 - `DATA_FILE_PATH` — SQLite database file path, e.g. `data.db` (required)
 - `REVISION` — environment label shown at startup (optional)
+- `HEVY_API_KEY` — Hevy API key for workout sync (optional, requires Hevy Pro)
 
 ## Architecture
 
@@ -98,15 +99,42 @@ The project is planned to migrate from Strong app integration to **Hevy** (https
 - **Auth:** `api-key` header (each user gets their key from https://hevy.com/settings?developer)
 - **Requires:** Hevy Pro subscription for API access
 
-### Key Hevy API Endpoints
+### Hevy API Endpoints (Verified Feb 2026)
 
-- `GET /v1/workouts` — list workouts (paginated)
-- `POST /v1/workouts` — create a workout
+**Workouts:**
+- `GET /v1/workouts?page=&pageSize=` — list workouts (paginated)
+- `GET /v1/workouts/{id}` — get single workout with exercises & sets
+- `POST /v1/workouts` — create workout (requires `is_private` field)
+- `PUT /v1/workouts/{id}` — update workout
 - `GET /v1/workouts/count` — total workout count
-- `GET /v1/routines` — list routines
-- `POST /v1/routines` — create a routine
-- `GET /v1/exercise_templates` — list exercises
-- Webhooks support for real-time updates
+- `GET /v1/workouts/events?page=&pageSize=` — event feed for polling changes
+
+**Exercise Templates:**
+- `GET /v1/exercise_templates?page=&pageSize=` — list exercises (429 built-in exercises, 86 pages x 5)
+- `GET /v1/exercise_templates/{id}` — get single exercise
+- `POST /v1/exercise_templates` — create custom exercise (fields: `title`, `exercise_type`, `muscle_group`, `equipment_category`)
+
+**Routines:**
+- `GET /v1/routines?page=&pageSize=` — list routines
+- `GET /v1/routines/{id}` — get single routine
+- `POST /v1/routines` — create routine (requires `folder_id`, use `null` for no folder)
+- `PUT /v1/routines/{id}` — update routine (do NOT include `folder_id`)
+
+**Routine Folders:**
+- `GET /v1/routine_folders?page=&pageSize=` — list folders
+- `POST /v1/routine_folders` — create folder
+
+**Not available:** DELETE on any resource, webhooks, exercise template count, routine events.
+
+### Hevy Data Model Enums
+
+**Exercise types:** `weight_reps`, `reps_only`, `bodyweight_reps`, `bodyweight_assisted_reps`, `duration`, `weight_duration`, `distance_duration`, `short_distance_weight`
+
+**Muscle groups:** `abdominals`, `shoulders`, `biceps`, `triceps`, `forearms`, `quadriceps`, `hamstrings`, `calves`, `glutes`, `abductors`, `adductors`, `lats`, `upper_back`, `traps`, `lower_back`, `chest`, `cardio`, `neck`, `full_body`, `other`
+
+**Equipment:** `none`, `barbell`, `dumbbell`, `kettlebell`, `machine`, `plate`, `resistance_band`, `suspension`, `other`
+
+**Set types:** `normal` (likely also: `warmup`, `dropset`, `failure`)
 
 ### Migration Plan
 

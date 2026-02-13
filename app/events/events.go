@@ -40,6 +40,10 @@ type UserManager interface {
 	SaveWorkout(telegramID int64, workout strong.Workout) (int64, error)
 	SaveWorkouts(telegramID int64, workouts []strong.Workout) (int, error)
 	GetRecentWorkouts(telegramID int64, limit int) ([]strong.Workout, error)
+	SetHevyAPIKey(telegramID int64, key string) error
+	GetHevyAPIKey(telegramID int64) (string, error)
+	ClearHevyAPIKey(telegramID int64) error
+	IsHevyConnected(telegramID int64) (bool, error)
 }
 
 type ExercisesManager interface {
