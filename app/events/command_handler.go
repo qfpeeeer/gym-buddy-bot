@@ -2,7 +2,6 @@ package events
 
 import (
 	"context"
-	"fmt"
 	"log"
 
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -10,7 +9,6 @@ import (
 
 type BotCommandHandler struct {
 	TbAPI              TbAPI
-	ExerciseManager    ExercisesManager
 	UserManager        UserManager
 	SetAwaitingHevyKey func(userID, chatID int64)
 }
@@ -29,8 +27,6 @@ func (h *BotCommandHandler) HandleCommands(ctx context.Context, update tbapi.Upd
 	switch command {
 	case "start":
 		h.handleStart(chatID, userID)
-	case "history":
-		h.handleHistory(chatID, userID)
 	case "connect":
 		h.handleConnect(chatID, userID)
 	case "disconnect":
@@ -53,22 +49,13 @@ func (h *BotCommandHandler) handleStart(chatID, userID int64) {
 		))
 	}
 
-	rows = append(rows,
-		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Get today's exercises", "get_exercises"),
-		),
-		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Workout history", "get_history"),
-		),
-	)
-
 	keyboard := tbapi.NewInlineKeyboardMarkup(rows...)
 
 	text := "Welcome to GymBuddy!\n\n"
 	if connected {
 		text += "Your Hevy account is connected.\nUse /sync to import new workouts or /last to see your latest session."
 	} else {
-		text += "Connect your Hevy account with /connect to unlock workout sync and AI analysis.\n\nYou can also paste a workout from Strong or upload a CSV export."
+		text += "Connect your Hevy account with /connect to unlock workout sync and AI analysis."
 	}
 
 	msg := tbapi.NewMessage(chatID, text)
@@ -91,7 +78,6 @@ func (h *BotCommandHandler) handleConnect(chatID, userID int64) {
 	msg := tbapi.NewMessage(chatID, text)
 	send(msg, h.TbAPI)
 
-	// The actual key handling happens in MessageHandler via the awaitingHevyKey state.
 	if h.SetAwaitingHevyKey != nil {
 		h.SetAwaitingHevyKey(userID, chatID)
 	}
@@ -113,39 +99,5 @@ func (h *BotCommandHandler) handleDisconnect(chatID, userID int64) {
 	}
 
 	msg := tbapi.NewMessage(chatID, "Hevy account disconnected.")
-	send(msg, h.TbAPI)
-}
-
-func (h *BotCommandHandler) handleHistory(chatID int64, userID int64) {
-	workouts, err := h.UserManager.GetRecentWorkouts(userID, 5)
-	if err != nil {
-		log.Printf("[error] failed to get recent workouts: %v", err)
-		msg := tbapi.NewMessage(chatID, "Failed to load workout history.")
-		send(msg, h.TbAPI)
-		return
-	}
-
-	if len(workouts) == 0 {
-		msg := tbapi.NewMessage(chatID, "No workouts logged yet.\n\nPaste a workout from the Strong app or upload a CSV export to get started.")
-		send(msg, h.TbAPI)
-		return
-	}
-
-	text := "Recent workouts:\n"
-	for i, w := range workouts {
-		totalSets := 0
-		for _, ex := range w.Exercises {
-			totalSets += len(ex.Sets)
-		}
-		text += fmt.Sprintf("\n%d. %s\n   %s | %d exercise(s), %d set(s)",
-			i+1,
-			w.Name,
-			w.Date.Format("Mon, 2 Jan 2006"),
-			len(w.Exercises),
-			totalSets,
-		)
-	}
-
-	msg := tbapi.NewMessage(chatID, text)
 	send(msg, h.TbAPI)
 }

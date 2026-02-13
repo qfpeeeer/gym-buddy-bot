@@ -10,7 +10,6 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/qfpeeeer/gym-buddy-bot/app/events"
-	"github.com/qfpeeeer/gym-buddy-bot/app/exercises"
 	"github.com/qfpeeeer/gym-buddy-bot/app/storage"
 	"github.com/qfpeeeer/gym-buddy-bot/app/user"
 
@@ -56,17 +55,7 @@ func execute(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize user storage: %w", err)
 	}
 
-	exerciseStorage, err := storage.NewExerciseStorage(dataDB)
-	if err != nil {
-		return fmt.Errorf("failed to initialize exercise storage: %w", err)
-	}
-
-	workoutStorage, err := storage.NewWorkoutStorage(dataDB)
-	if err != nil {
-		return fmt.Errorf("failed to initialize workout storage: %w", err)
-	}
-
-	userManager := user.NewManager(userStorage, exerciseStorage, workoutStorage)
+	userManager := user.NewManager(userStorage)
 
 	tbAPI, err := tbapi.NewBotAPI(telegramToken)
 	if err != nil {
@@ -74,27 +63,19 @@ func execute(ctx context.Context) error {
 	}
 	tbAPI.Debug = false
 
-	exercisesManager, err := exercises.NewExerciseManager("exercises.json")
-	if err != nil {
-		return fmt.Errorf("can't make exercises db, %w", err)
-	}
-
 	messageHandler := &events.BotMessageHandler{
-		TbAPI:         tbAPI,
-		UserManager:   userManager,
-		TelegramToken: telegramToken,
+		TbAPI:       tbAPI,
+		UserManager: userManager,
 	}
 
 	commandHandler := &events.BotCommandHandler{
 		TbAPI:              tbAPI,
-		ExerciseManager:    exercisesManager,
 		UserManager:        userManager,
 		SetAwaitingHevyKey: messageHandler.SetAwaitingHevyKey,
 	}
 
 	callbackQueryHandler := &events.BotCallbackQueryHandler{
 		TbAPI:              tbAPI,
-		ExerciseManager:    exercisesManager,
 		UserManager:        userManager,
 		SetAwaitingHevyKey: messageHandler.SetAwaitingHevyKey,
 	}

@@ -6,8 +6,6 @@ import (
 	"log"
 
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/qfpeeeer/gym-buddy-bot/app/exercises"
-	"github.com/qfpeeeer/gym-buddy-bot/app/strong"
 )
 
 // TbAPI is an interface for telegram bot API, only subset of methods used
@@ -16,7 +14,6 @@ type TbAPI interface {
 	Send(c tbapi.Chattable) (tbapi.Message, error)
 	Request(c tbapi.Chattable) (*tbapi.APIResponse, error)
 	GetChat(config tbapi.ChatInfoConfig) (tbapi.Chat, error)
-	GetFile(config tbapi.FileConfig) (tbapi.File, error)
 }
 
 type CommandHandler interface {
@@ -33,22 +30,10 @@ type CallbackQueryHandler interface {
 
 type UserManager interface {
 	EnsureUser(telegramID int64) error
-	SetTodayExercises(telegramID int64, exercises []exercises.Exercise) error
-	GetTodayExercises(telegramID int64) ([]exercises.Exercise, error)
-	RemoveExercise(telegramID int64, exercise exercises.Exercise) error
-	ReplaceExercise(telegramID int64, oldExercise, newExercise exercises.Exercise) error
-	SaveWorkout(telegramID int64, workout strong.Workout) (int64, error)
-	SaveWorkouts(telegramID int64, workouts []strong.Workout) (int, error)
-	GetRecentWorkouts(telegramID int64, limit int) ([]strong.Workout, error)
 	SetHevyAPIKey(telegramID int64, key string) error
 	GetHevyAPIKey(telegramID int64) (string, error)
 	ClearHevyAPIKey(telegramID int64) error
 	IsHevyConnected(telegramID int64) (bool, error)
-}
-
-type ExercisesManager interface {
-	GetRandomExercises(count int) []exercises.Exercise
-	GetExerciseByID(id string) (exercises.Exercise, bool)
 }
 
 // send a message to the telegram as markdown first and if failed - as plain text
