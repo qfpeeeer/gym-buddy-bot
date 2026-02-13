@@ -79,3 +79,45 @@ Both parsers have dedicated test files with good coverage.
 - The bot uses `go-telegram-bot-api/v5` — messages are sent via `tgbotapi.NewMessage()`, inline keyboards via `tgbotapi.NewInlineKeyboardMarkup()`, and callbacks answered with `tgbotapi.NewCallback()`.
 - Callback data uses underscore-delimited prefixes for routing (e.g. `exercise_info_`, `remove_exercise_`).
 - The module path is `github.com/qfpeeeer/gym-buddy-bot`.
+
+## Future Direction: Migration from Strong to Hevy
+
+The project is planned to migrate from Strong app integration to **Hevy** (https://hevy.com).
+
+### Why Hevy
+
+- Strong has no public API; the only reversed API (https://github.com/dmzoneill/strongapp-api) is abandoned, Android-only, and unreliable.
+- Hevy has an **official public REST API** with full CRUD on workouts, routines, and exercises.
+- Hevy supports **import from Strong CSV**, so existing users can migrate their data.
+- Hevy has a polished iOS and Android app with 11M+ users.
+
+### Hevy API Reference
+
+- **Swagger docs:** https://api.hevyapp.com/docs/
+- **Base URL:** `https://api.hevyapp.com/v1`
+- **Auth:** `api-key` header (each user gets their key from https://hevy.com/settings?developer)
+- **Requires:** Hevy Pro subscription for API access
+
+### Key Hevy API Endpoints
+
+- `GET /v1/workouts` — list workouts (paginated)
+- `POST /v1/workouts` — create a workout
+- `GET /v1/workouts/count` — total workout count
+- `GET /v1/routines` — list routines
+- `POST /v1/routines` — create a routine
+- `GET /v1/exercise_templates` — list exercises
+- Webhooks support for real-time updates
+
+### Migration Plan
+
+1. Add Hevy API client package (`app/hevy/`) for fetching workouts and exercises via REST API.
+2. Add per-user `hevy_api_key` storage (new column or table in SQLite).
+3. Add a bot command (e.g. `/connect_hevy`) for users to provide their Hevy API key.
+4. Implement automatic workout sync from Hevy as an alternative to manual CSV/text import.
+5. Keep Strong parsers working for backwards compatibility during transition.
+
+### Useful Community Projects
+
+- Go-compatible OpenAPI spec: https://github.com/chrisdoc/hevy-mcp (has `openapi-spec.json`)
+- Python client reference: https://github.com/remuzel/hevy-api
+- TypeScript client: https://github.com/mustafamohsen/HevyAPI
