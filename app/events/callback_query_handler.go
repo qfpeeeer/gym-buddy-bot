@@ -25,6 +25,8 @@ func (h *BotCallbackQueryHandler) HandleCallbackQuery(ctx context.Context, updat
 	switch {
 	case data == "get_exercises":
 		h.handleGetExercises(query)
+	case data == "get_history":
+		h.handleGetHistory(query)
 	case strings.HasPrefix(data, "exercise_info_"):
 		h.handleExerciseInfo(query)
 	case strings.HasPrefix(data, "remove_exercise_"):
@@ -33,8 +35,49 @@ func (h *BotCallbackQueryHandler) HandleCallbackQuery(ctx context.Context, updat
 		h.handleReplaceExercise(query)
 	case strings.HasPrefix(data, "back_to_exercises"):
 		h.handleBackToExercises(query)
-		// ... other callback queries
 	}
+}
+
+func (h *BotCallbackQueryHandler) handleGetHistory(query *tbapi.CallbackQuery) {
+	userID := query.From.ID
+	chatID := query.Message.Chat.ID
+
+	callback := tbapi.NewCallback(query.ID, "")
+	if _, err := h.TbAPI.Request(callback); err != nil {
+		log.Printf("[error] failed to answer callback query: %v", err)
+	}
+
+	workouts, err := h.UserManager.GetRecentWorkouts(userID, 5)
+	if err != nil {
+		log.Printf("[error] failed to get recent workouts: %v", err)
+		msg := tbapi.NewMessage(chatID, "Failed to load workout history.")
+		send(msg, h.TbAPI)
+		return
+	}
+
+	if len(workouts) == 0 {
+		msg := tbapi.NewMessage(chatID, "No workouts logged yet.\n\nPaste a workout from the Strong app or upload a CSV export to get started.")
+		send(msg, h.TbAPI)
+		return
+	}
+
+	text := "Recent workouts:\n"
+	for i, w := range workouts {
+		totalSets := 0
+		for _, ex := range w.Exercises {
+			totalSets += len(ex.Sets)
+		}
+		text += fmt.Sprintf("\n%d. %s\n   %s | %d exercise(s), %d set(s)",
+			i+1,
+			w.Name,
+			w.Date.Format("Mon, 2 Jan 2006"),
+			len(w.Exercises),
+			totalSets,
+		)
+	}
+
+	msg := tbapi.NewMessage(chatID, text)
+	send(msg, h.TbAPI)
 }
 
 func (h *BotCallbackQueryHandler) handleGetExercises(query *tbapi.CallbackQuery) {
@@ -185,7 +228,7 @@ func (h *BotCallbackQueryHandler) handleReplaceExercise(query *tbapi.CallbackQue
 			tbapi.NewInlineKeyboardButtonData("Remove", fmt.Sprintf("remove_exercise_%s", newExercise.ID)),
 		),
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Get ExplanationЫ Photos", fmt.Sprintf("get_photos_%s", newExercise.ID)),
+			tbapi.NewInlineKeyboardButtonData("Get Explanation Photos", fmt.Sprintf("get_photos_%s", newExercise.ID)),
 		),
 		tbapi.NewInlineKeyboardRow(
 			tbapi.NewInlineKeyboardButtonData("Back to Exercises", "back_to_exercises"),

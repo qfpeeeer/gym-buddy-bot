@@ -33,9 +33,13 @@ func (h *BotCommandHandler) handleStart(chatID int64) {
 		tbapi.NewInlineKeyboardRow(
 			tbapi.NewInlineKeyboardButtonData("Get today's exercises", "get_exercises"),
 		),
+		tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonData("Workout history", "get_history"),
+		),
 	)
 
-	msg := tbapi.NewMessage(chatID, "Welcome to GymBuddy! What would you like to do?")
+	text := "Welcome to GymBuddy!\n\nPaste a workout from Strong or upload a CSV export to save your training history."
+	msg := tbapi.NewMessage(chatID, text)
 	msg.ReplyMarkup = keyboard
 
 	if _, err := h.TbAPI.Send(msg); err != nil {
