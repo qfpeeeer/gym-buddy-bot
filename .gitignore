@@ -95,3 +95,6 @@ data.db
 project_extractor.sh
 
 # End of https://www.toptal.com/developers/gitignore/api/goland+all
+
+.claude
+.zed

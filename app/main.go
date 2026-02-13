@@ -60,7 +60,12 @@ func execute(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize exercise storage: %w", err)
 	}
 
-	userManager := user.NewManager(userStorage, exerciseStorage)
+	workoutStorage, err := storage.NewWorkoutStorage(dataDB)
+	if err != nil {
+		return fmt.Errorf("failed to initialize workout storage: %w", err)
+	}
+
+	userManager := user.NewManager(userStorage, exerciseStorage, workoutStorage)
 
 	tbAPI, err := tbapi.NewBotAPI(telegramToken)
 	if err != nil {
@@ -76,10 +81,13 @@ func execute(ctx context.Context) error {
 	commandHandler := &events.BotCommandHandler{
 		TbAPI:           tbAPI,
 		ExerciseManager: exercisesManager,
+		UserManager:     userManager,
 	}
 
 	messageHandler := &events.BotMessageHandler{
-		TbAPI: tbAPI,
+		TbAPI:         tbAPI,
+		UserManager:   userManager,
+		TelegramToken: telegramToken,
 	}
 
 	callbackQueryHandler := &events.BotCallbackQueryHandler{

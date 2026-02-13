@@ -3,9 +3,11 @@ package events
 import (
 	"context"
 	"fmt"
+	"log"
+
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/qfpeeeer/gym-buddy-bot/app/exercises"
-	"log"
+	"github.com/qfpeeeer/gym-buddy-bot/app/strong"
 )
 
 // TbAPI is an interface for telegram bot API, only subset of methods used
@@ -14,6 +16,7 @@ type TbAPI interface {
 	Send(c tbapi.Chattable) (tbapi.Message, error)
 	Request(c tbapi.Chattable) (*tbapi.APIResponse, error)
 	GetChat(config tbapi.ChatInfoConfig) (tbapi.Chat, error)
+	GetFile(config tbapi.FileConfig) (tbapi.File, error)
 }
 
 type CommandHandler interface {
@@ -34,6 +37,9 @@ type UserManager interface {
 	GetTodayExercises(telegramID int64) ([]exercises.Exercise, error)
 	RemoveExercise(telegramID int64, exercise exercises.Exercise) error
 	ReplaceExercise(telegramID int64, oldExercise, newExercise exercises.Exercise) error
+	SaveWorkout(telegramID int64, workout strong.Workout) (int64, error)
+	SaveWorkouts(telegramID int64, workouts []strong.Workout) (int, error)
+	GetRecentWorkouts(telegramID int64, limit int) ([]strong.Workout, error)
 }
 
 type ExercisesManager interface {
