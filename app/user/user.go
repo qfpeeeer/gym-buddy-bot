@@ -6,6 +6,8 @@ import (
 
 	"github.com/qfpeeeer/gym-buddy-bot/app/analysis"
 	"github.com/qfpeeeer/gym-buddy-bot/app/hevy"
+	"github.com/qfpeeeer/gym-buddy-bot/app/llm"
+	"github.com/qfpeeeer/gym-buddy-bot/app/storage"
 )
 
 // Storage interface defines the methods for user-related storage operations
@@ -39,21 +41,40 @@ type SyncStorage interface {
 	UpdateSyncState(userID int64, totalWorkouts int) error
 }
 
+// AISettingsStorage interface defines the methods for AI configuration
+type AISettingsStorage interface {
+	GetAISettings(userID int64) (*storage.AISettings, error)
+	SetOpenAIKey(userID int64, key string) error
+	SetModel(userID int64, model string) error
+	IsAIConfigured(userID int64) (bool, error)
+}
+
+// PreferencesStorage interface defines the methods for user preferences
+type PreferencesStorage interface {
+	GetPreferences(userID int64) (*storage.UserPreferences, error)
+	SetGoals(userID int64, goals string) error
+	SetNotes(userID int64, notes string) error
+}
+
 // Manager handles user-related operations
 type Manager struct {
 	userStorage    Storage
 	workoutStorage WorkoutStorage
 	exerciseCache  ExerciseCacheStorage
 	syncStorage    SyncStorage
+	aiSettings     AISettingsStorage
+	preferences    PreferencesStorage
 }
 
 // NewManager creates a new Manager instance
-func NewManager(userStorage Storage, workoutStorage WorkoutStorage, exerciseCache ExerciseCacheStorage, syncStorage SyncStorage) *Manager {
+func NewManager(userStorage Storage, workoutStorage WorkoutStorage, exerciseCache ExerciseCacheStorage, syncStorage SyncStorage, aiSettings AISettingsStorage, preferences PreferencesStorage) *Manager {
 	return &Manager{
 		userStorage:    userStorage,
 		workoutStorage: workoutStorage,
 		exerciseCache:  exerciseCache,
 		syncStorage:    syncStorage,
+		aiSettings:     aiSettings,
+		preferences:    preferences,
 	}
 }
 
@@ -245,4 +266,97 @@ func (m *Manager) RunAnalysis(userID int64, reportType string) (string, error) {
 	default:
 		return analysis.FormatFullReport(result), nil
 	}
+}
+
+// --- AI Settings ---
+
+// SetOpenAIKey stores the OpenAI API key for a user.
+func (m *Manager) SetOpenAIKey(userID int64, key string) error {
+	return m.aiSettings.SetOpenAIKey(userID, key)
+}
+
+// SetAIModel stores the OpenAI model for a user.
+func (m *Manager) SetAIModel(userID int64, model string) error {
+	return m.aiSettings.SetModel(userID, model)
+}
+
+// GetAISettings returns the AI settings for a user.
+func (m *Manager) GetAISettings(userID int64) (*storage.AISettings, error) {
+	return m.aiSettings.GetAISettings(userID)
+}
+
+// IsAIConfigured checks if a user has OpenAI configured.
+func (m *Manager) IsAIConfigured(userID int64) (bool, error) {
+	return m.aiSettings.IsAIConfigured(userID)
+}
+
+// --- User Preferences ---
+
+// SetGoals stores training goals for a user.
+func (m *Manager) SetGoals(userID int64, goals string) error {
+	return m.preferences.SetGoals(userID, goals)
+}
+
+// SetNotes stores training notes for a user.
+func (m *Manager) SetNotes(userID int64, notes string) error {
+	return m.preferences.SetNotes(userID, notes)
+}
+
+// GetPreferences returns the preferences for a user.
+func (m *Manager) GetPreferences(userID int64) (*storage.UserPreferences, error) {
+	return m.preferences.GetPreferences(userID)
+}
+
+// --- AI Advice ---
+
+// GetAdvice generates AI coaching advice based on the user's training data.
+func (m *Manager) GetAdvice(ctx context.Context, userID int64) (string, error) {
+	return m.askLLM(ctx, userID, "Based on this training data, provide your top 3-5 prioritized recommendations for this client.")
+}
+
+// AskQuestion sends a user's question to the LLM with full training context.
+func (m *Manager) AskQuestion(ctx context.Context, userID int64, question string) (string, error) {
+	return m.askLLM(ctx, userID, question)
+}
+
+// GetAnalysisInsights sends analysis results to the LLM for natural language interpretation.
+func (m *Manager) GetAnalysisInsights(ctx context.Context, userID int64, analysisText string) (string, error) {
+	settings, err := m.aiSettings.GetAISettings(userID)
+	if err != nil || settings == nil || settings.OpenAIKey == "" {
+		return "", fmt.Errorf("OpenAI not configured. Use /setup_ai first.")
+	}
+
+	client := llm.NewClient(settings.OpenAIKey, settings.Model)
+	systemPrompt := llm.CoachSystemPrompt + llm.AnalysisInsightsPrompt
+
+	return client.Chat(ctx, systemPrompt, "Here is the mechanical analysis:\n\n"+analysisText+"\n\nExplain the key findings and give actionable recommendations.")
+}
+
+func (m *Manager) askLLM(ctx context.Context, userID int64, question string) (string, error) {
+	settings, err := m.aiSettings.GetAISettings(userID)
+	if err != nil || settings == nil || settings.OpenAIKey == "" {
+		return "", fmt.Errorf("OpenAI not configured. Use /setup_ai first.")
+	}
+
+	workouts, err := m.workoutStorage.GetAllWorkouts(userID)
+	if err != nil {
+		return "", fmt.Errorf("failed to load workouts: %w", err)
+	}
+	if len(workouts) == 0 {
+		return "", fmt.Errorf("no workouts found. Run /init first.")
+	}
+
+	templates, err := m.exerciseCache.GetAllTemplates()
+	if err != nil {
+		return "", fmt.Errorf("failed to load templates: %w", err)
+	}
+
+	prefs, _ := m.preferences.GetPreferences(userID)
+	result := analysis.Analyze(workouts, templates, 4)
+
+	contextStr := llm.BuildContext(workouts, templates, prefs, result)
+	userMessage := contextStr + "\n" + question
+
+	client := llm.NewClient(settings.OpenAIKey, settings.Model)
+	return client.Chat(ctx, llm.CoachSystemPrompt, userMessage)
 }

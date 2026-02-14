@@ -11,7 +11,7 @@ import (
 	"github.com/qfpeeeer/gym-buddy-bot/app/hevy"
 )
 
-type awaitingKeyState struct {
+type awaitingState struct {
 	chatID int64
 }
 
@@ -19,18 +19,51 @@ type BotMessageHandler struct {
 	TbAPI       TbAPI
 	UserManager UserManager
 
-	mu          sync.Mutex
-	awaitingKey map[int64]awaitingKeyState // userID -> state
+	mu               sync.Mutex
+	awaitingHevyKey  map[int64]awaitingState
+	awaitingAIKey    map[int64]awaitingState
+	awaitingNotes    map[int64]awaitingState
+	awaitingGoalText map[int64]awaitingState
 }
 
 // SetAwaitingHevyKey marks a user as awaiting Hevy API key input.
 func (h *BotMessageHandler) SetAwaitingHevyKey(userID, chatID int64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.awaitingKey == nil {
-		h.awaitingKey = make(map[int64]awaitingKeyState)
+	if h.awaitingHevyKey == nil {
+		h.awaitingHevyKey = make(map[int64]awaitingState)
 	}
-	h.awaitingKey[userID] = awaitingKeyState{chatID: chatID}
+	h.awaitingHevyKey[userID] = awaitingState{chatID: chatID}
+}
+
+// SetAwaitingOpenAIKey marks a user as awaiting OpenAI API key input.
+func (h *BotMessageHandler) SetAwaitingOpenAIKey(userID, chatID int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.awaitingAIKey == nil {
+		h.awaitingAIKey = make(map[int64]awaitingState)
+	}
+	h.awaitingAIKey[userID] = awaitingState{chatID: chatID}
+}
+
+// SetAwaitingNotes marks a user as awaiting training notes input.
+func (h *BotMessageHandler) SetAwaitingNotes(userID, chatID int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.awaitingNotes == nil {
+		h.awaitingNotes = make(map[int64]awaitingState)
+	}
+	h.awaitingNotes[userID] = awaitingState{chatID: chatID}
+}
+
+// SetAwaitingGoalText marks a user as awaiting custom goal text input.
+func (h *BotMessageHandler) SetAwaitingGoalText(userID, chatID int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.awaitingGoalText == nil {
+		h.awaitingGoalText = make(map[int64]awaitingState)
+	}
+	h.awaitingGoalText[userID] = awaitingState{chatID: chatID}
 }
 
 func (h *BotMessageHandler) HandleMessages(ctx context.Context, update tbapi.Update) {
@@ -44,8 +77,16 @@ func (h *BotMessageHandler) HandleMessages(ctx context.Context, update tbapi.Upd
 
 	log.Printf("[info] received message from user %d", userID)
 
-	// check if user is in "awaiting hevy key" state
 	if h.handleHevyKeyInput(ctx, userID, chatID, update.Message.MessageID, messageText) {
+		return
+	}
+	if h.handleOpenAIKeyInput(userID, chatID, update.Message.MessageID, messageText) {
+		return
+	}
+	if h.handleNotesInput(userID, chatID, messageText) {
+		return
+	}
+	if h.handleGoalTextInput(userID, chatID, messageText) {
 		return
 	}
 }
@@ -54,9 +95,9 @@ func (h *BotMessageHandler) HandleMessages(ctx context.Context, update tbapi.Upd
 // Returns true if the message was handled as a key input.
 func (h *BotMessageHandler) handleHevyKeyInput(ctx context.Context, userID, chatID int64, messageID int, text string) bool {
 	h.mu.Lock()
-	_, awaiting := h.awaitingKey[userID]
+	_, awaiting := h.awaitingHevyKey[userID]
 	if awaiting {
-		delete(h.awaitingKey, userID)
+		delete(h.awaitingHevyKey, userID)
 	}
 	h.mu.Unlock()
 
@@ -98,6 +139,119 @@ func (h *BotMessageHandler) handleHevyKeyInput(ctx context.Context, userID, chat
 	}
 
 	msg := tbapi.NewMessage(chatID, fmt.Sprintf("Hevy account connected! You have %d workout(s).\n\nRun /init to import your workout history.", count))
+	send(msg, h.TbAPI)
+	return true
+}
+
+func (h *BotMessageHandler) handleOpenAIKeyInput(userID, chatID int64, messageID int, text string) bool {
+	h.mu.Lock()
+	_, awaiting := h.awaitingAIKey[userID]
+	if awaiting {
+		delete(h.awaitingAIKey, userID)
+	}
+	h.mu.Unlock()
+
+	if !awaiting {
+		return false
+	}
+
+	// Delete the message containing the API key for security.
+	deleteMsg := tbapi.NewDeleteMessage(chatID, messageID)
+	h.TbAPI.Request(deleteMsg)
+
+	key := strings.TrimSpace(text)
+	if key == "" {
+		msg := tbapi.NewMessage(chatID, "Empty key. Use /setup_ai to try again.")
+		send(msg, h.TbAPI)
+		return true
+	}
+
+	if err := h.UserManager.SetOpenAIKey(userID, key); err != nil {
+		log.Printf("[error] failed to save OpenAI key: %v", err)
+		msg := tbapi.NewMessage(chatID, "Failed to save API key. Please try again.")
+		send(msg, h.TbAPI)
+		return true
+	}
+
+	// Show model picker
+	keyboard := tbapi.NewInlineKeyboardMarkup(
+		tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonData("gpt-4.1-nano (fastest)", "set_model_gpt-4.1-nano"),
+		),
+		tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonData("gpt-4.1-mini (recommended)", "set_model_gpt-4.1-mini"),
+		),
+		tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonData("gpt-4.1 (most capable)", "set_model_gpt-4.1"),
+		),
+	)
+
+	msg := tbapi.NewMessage(chatID, "OpenAI key saved! Choose a model:")
+	msg.ReplyMarkup = keyboard
+	if _, err := h.TbAPI.Send(msg); err != nil {
+		log.Printf("[error] failed to send model picker: %v", err)
+	}
+	return true
+}
+
+func (h *BotMessageHandler) handleNotesInput(userID, chatID int64, text string) bool {
+	h.mu.Lock()
+	_, awaiting := h.awaitingNotes[userID]
+	if awaiting {
+		delete(h.awaitingNotes, userID)
+	}
+	h.mu.Unlock()
+
+	if !awaiting {
+		return false
+	}
+
+	notes := strings.TrimSpace(text)
+	if notes == "" {
+		msg := tbapi.NewMessage(chatID, "Empty notes. Use /notes to try again.")
+		send(msg, h.TbAPI)
+		return true
+	}
+
+	if err := h.UserManager.SetNotes(userID, notes); err != nil {
+		log.Printf("[error] failed to save notes: %v", err)
+		msg := tbapi.NewMessage(chatID, "Failed to save notes.")
+		send(msg, h.TbAPI)
+		return true
+	}
+
+	msg := tbapi.NewMessage(chatID, fmt.Sprintf("Notes saved: %s", notes))
+	send(msg, h.TbAPI)
+	return true
+}
+
+func (h *BotMessageHandler) handleGoalTextInput(userID, chatID int64, text string) bool {
+	h.mu.Lock()
+	_, awaiting := h.awaitingGoalText[userID]
+	if awaiting {
+		delete(h.awaitingGoalText, userID)
+	}
+	h.mu.Unlock()
+
+	if !awaiting {
+		return false
+	}
+
+	goal := strings.TrimSpace(text)
+	if goal == "" {
+		msg := tbapi.NewMessage(chatID, "Empty goal. Use /goals to try again.")
+		send(msg, h.TbAPI)
+		return true
+	}
+
+	if err := h.UserManager.SetGoals(userID, goal); err != nil {
+		log.Printf("[error] failed to save goal: %v", err)
+		msg := tbapi.NewMessage(chatID, "Failed to save goal.")
+		send(msg, h.TbAPI)
+		return true
+	}
+
+	msg := tbapi.NewMessage(chatID, fmt.Sprintf("Goal set: %s", goal))
 	send(msg, h.TbAPI)
 	return true
 }

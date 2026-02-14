@@ -10,9 +10,11 @@ import (
 )
 
 type BotCommandHandler struct {
-	TbAPI              TbAPI
-	UserManager        UserManager
-	SetAwaitingHevyKey func(userID, chatID int64)
+	TbAPI                TbAPI
+	UserManager          UserManager
+	SetAwaitingHevyKey   func(userID, chatID int64)
+	SetAwaitingOpenAIKey func(userID, chatID int64)
+	SetAwaitingNotes     func(userID, chatID int64)
 }
 
 func (h *BotCommandHandler) HandleCommands(ctx context.Context, update tbapi.Update) {
@@ -41,6 +43,16 @@ func (h *BotCommandHandler) HandleCommands(ctx context.Context, update tbapi.Upd
 		h.handleLast(ctx, chatID, userID)
 	case "analyze":
 		h.handleAnalyze(chatID, userID)
+	case "setup_ai":
+		h.handleSetupAI(chatID, userID)
+	case "goals":
+		h.handleGoals(chatID, userID)
+	case "notes":
+		h.handleNotes(chatID, userID)
+	case "advice":
+		h.handleAdvice(ctx, chatID, userID)
+	case "ask":
+		h.handleAsk(ctx, chatID, userID, update.Message.CommandArguments())
 	}
 }
 
@@ -59,6 +71,7 @@ func (h *BotCommandHandler) handleStart(ctx context.Context, chatID, userID int6
 			tbapi.NewInlineKeyboardButtonData("Run Initial Sync", "init_sync"),
 		))
 	} else {
+		aiConfigured, _ := h.UserManager.IsAIConfigured(userID)
 		rows = append(rows,
 			tbapi.NewInlineKeyboardRow(
 				tbapi.NewInlineKeyboardButtonData("Last Workout", "fetch_last"),
@@ -68,6 +81,13 @@ func (h *BotCommandHandler) handleStart(ctx context.Context, chatID, userID int6
 				tbapi.NewInlineKeyboardButtonData("Analyze", "show_analyze"),
 			),
 		)
+		if aiConfigured {
+			rows = append(rows,
+				tbapi.NewInlineKeyboardRow(
+					tbapi.NewInlineKeyboardButtonData("AI Advice", "get_advice"),
+				),
+			)
+		}
 	}
 
 	keyboard := tbapi.NewInlineKeyboardMarkup(rows...)
@@ -78,7 +98,7 @@ func (h *BotCommandHandler) handleStart(ctx context.Context, chatID, userID int6
 	} else if !synced {
 		text += "Your Hevy account is connected! Run /init to import your workout history."
 	} else {
-		text += "Your Hevy account is connected and synced.\n\nCommands:\n/last — latest workout\n/sync — fetch new workouts\n/analyze — training analysis"
+		text += "Your Hevy account is connected and synced.\n\nCommands:\n/last — latest workout\n/sync — fetch new workouts\n/analyze — training analysis\n/advice — AI recommendations\n/ask — ask your AI coach\n/goals — set training goals\n/notes — set training preferences\n/setup_ai — configure OpenAI"
 	}
 
 	msg := tbapi.NewMessage(chatID, text)
@@ -209,7 +229,7 @@ func (h *BotCommandHandler) handleAnalyze(chatID, userID int64) {
 		return
 	}
 
-	keyboard := tbapi.NewInlineKeyboardMarkup(
+	rows := [][]tbapi.InlineKeyboardButton{
 		tbapi.NewInlineKeyboardRow(
 			tbapi.NewInlineKeyboardButtonData("Volume Report", "analyze_volume"),
 			tbapi.NewInlineKeyboardButtonData("Progressive Overload", "analyze_overload"),
@@ -218,7 +238,16 @@ func (h *BotCommandHandler) handleAnalyze(chatID, userID int64) {
 			tbapi.NewInlineKeyboardButtonData("Muscle Balance", "analyze_balance"),
 			tbapi.NewInlineKeyboardButtonData("Full Report", "analyze_full"),
 		),
-	)
+	}
+
+	aiConfigured, _ := h.UserManager.IsAIConfigured(userID)
+	if aiConfigured {
+		rows = append(rows, tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonData("AI Insights", "ai_insights"),
+		))
+	}
+
+	keyboard := tbapi.NewInlineKeyboardMarkup(rows...)
 
 	msg := tbapi.NewMessage(chatID, "Choose analysis type:")
 	msg.ReplyMarkup = keyboard
@@ -301,4 +330,123 @@ func calcTotalVolume(w *hevy.Workout) float64 {
 		}
 	}
 	return total
+}
+
+func (h *BotCommandHandler) handleSetupAI(chatID, userID int64) {
+	text := "Send me your OpenAI API key.\n\nGet it from: platform.openai.com/api-keys"
+	msg := tbapi.NewMessage(chatID, text)
+	send(msg, h.TbAPI)
+
+	if h.SetAwaitingOpenAIKey != nil {
+		h.SetAwaitingOpenAIKey(userID, chatID)
+	}
+}
+
+func (h *BotCommandHandler) handleGoals(chatID, userID int64) {
+	keyboard := tbapi.NewInlineKeyboardMarkup(
+		tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonData("Hypertrophy", "set_goal_hypertrophy"),
+			tbapi.NewInlineKeyboardButtonData("Strength", "set_goal_strength"),
+		),
+		tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonData("Endurance", "set_goal_endurance"),
+			tbapi.NewInlineKeyboardButtonData("Recomp", "set_goal_recomp"),
+		),
+		tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonData("Custom...", "set_goal_custom"),
+		),
+	)
+
+	prefs, _ := h.UserManager.GetPreferences(userID)
+	text := "Choose your training goal:"
+	if prefs != nil && prefs.Goals != "" {
+		text = fmt.Sprintf("Current goal: %s\n\nChoose a new goal:", prefs.Goals)
+	}
+
+	msg := tbapi.NewMessage(chatID, text)
+	msg.ReplyMarkup = keyboard
+	if _, err := h.TbAPI.Send(msg); err != nil {
+		log.Printf("[error] failed to send goals menu: %v", err)
+	}
+}
+
+func (h *BotCommandHandler) handleNotes(chatID, userID int64) {
+	prefs, _ := h.UserManager.GetPreferences(userID)
+	text := "Send me your training notes/preferences.\n\nExamples:\n- \"Focusing on back width and tricep mass\"\n- \"Weak hamstrings, want to bring them up\"\n- \"Prefer compound movements, avoid machines\""
+	if prefs != nil && prefs.Notes != "" {
+		text = fmt.Sprintf("Current notes: %s\n\n%s", prefs.Notes, text)
+	}
+
+	msg := tbapi.NewMessage(chatID, text)
+	send(msg, h.TbAPI)
+
+	if h.SetAwaitingNotes != nil {
+		h.SetAwaitingNotes(userID, chatID)
+	}
+}
+
+func (h *BotCommandHandler) handleAdvice(ctx context.Context, chatID, userID int64) {
+	aiConfigured, _ := h.UserManager.IsAIConfigured(userID)
+	if !aiConfigured {
+		msg := tbapi.NewMessage(chatID, "OpenAI not configured. Use /setup_ai first.")
+		send(msg, h.TbAPI)
+		return
+	}
+
+	synced, _ := h.UserManager.IsSynced(userID)
+	if !synced {
+		msg := tbapi.NewMessage(chatID, "No workout data. Run /init first.")
+		send(msg, h.TbAPI)
+		return
+	}
+
+	msg := tbapi.NewMessage(chatID, "Thinking...")
+	send(msg, h.TbAPI)
+
+	result, err := h.UserManager.GetAdvice(ctx, userID)
+	if err != nil {
+		log.Printf("[error] get advice failed for user %d: %v", userID, err)
+		msg := tbapi.NewMessage(chatID, fmt.Sprintf("Failed: %v", err))
+		send(msg, h.TbAPI)
+		return
+	}
+
+	msg = tbapi.NewMessage(chatID, result)
+	send(msg, h.TbAPI)
+}
+
+func (h *BotCommandHandler) handleAsk(ctx context.Context, chatID, userID int64, question string) {
+	if question == "" {
+		msg := tbapi.NewMessage(chatID, "Usage: /ask <your question>\n\nExample: /ask Should I deload this week?")
+		send(msg, h.TbAPI)
+		return
+	}
+
+	aiConfigured, _ := h.UserManager.IsAIConfigured(userID)
+	if !aiConfigured {
+		msg := tbapi.NewMessage(chatID, "OpenAI not configured. Use /setup_ai first.")
+		send(msg, h.TbAPI)
+		return
+	}
+
+	synced, _ := h.UserManager.IsSynced(userID)
+	if !synced {
+		msg := tbapi.NewMessage(chatID, "No workout data. Run /init first.")
+		send(msg, h.TbAPI)
+		return
+	}
+
+	msg := tbapi.NewMessage(chatID, "Thinking...")
+	send(msg, h.TbAPI)
+
+	result, err := h.UserManager.AskQuestion(ctx, userID, question)
+	if err != nil {
+		log.Printf("[error] ask question failed for user %d: %v", userID, err)
+		msg := tbapi.NewMessage(chatID, fmt.Sprintf("Failed: %v", err))
+		send(msg, h.TbAPI)
+		return
+	}
+
+	msg = tbapi.NewMessage(chatID, result)
+	send(msg, h.TbAPI)
 }

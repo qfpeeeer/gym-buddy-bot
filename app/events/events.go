@@ -7,6 +7,7 @@ import (
 
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/qfpeeeer/gym-buddy-bot/app/hevy"
+	"github.com/qfpeeeer/gym-buddy-bot/app/storage"
 )
 
 // TbAPI is an interface for telegram bot API, only subset of methods used
@@ -41,6 +42,22 @@ type UserManager interface {
 	GetLastWorkout(ctx context.Context, userID int64) (*hevy.Workout, error)
 	GetWorkoutsByTitle(userID int64, title string) ([]hevy.Workout, error)
 	RunAnalysis(userID int64, reportType string) (string, error)
+
+	// AI settings
+	SetOpenAIKey(userID int64, key string) error
+	SetAIModel(userID int64, model string) error
+	GetAISettings(userID int64) (*storage.AISettings, error)
+	IsAIConfigured(userID int64) (bool, error)
+
+	// User preferences
+	SetGoals(userID int64, goals string) error
+	SetNotes(userID int64, notes string) error
+	GetPreferences(userID int64) (*storage.UserPreferences, error)
+
+	// AI advice
+	GetAdvice(ctx context.Context, userID int64) (string, error)
+	AskQuestion(ctx context.Context, userID int64, question string) (string, error)
+	GetAnalysisInsights(ctx context.Context, userID int64, analysisText string) (string, error)
 }
 
 // send a message to the telegram as markdown first and if failed - as plain text

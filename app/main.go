@@ -70,7 +70,17 @@ func execute(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize sync storage: %w", err)
 	}
 
-	userManager := user.NewManager(userStorage, workoutStorage, exerciseCache, syncStorage)
+	aiSettingsStorage, err := storage.NewAISettingsStorage(dataDB)
+	if err != nil {
+		return fmt.Errorf("failed to initialize AI settings storage: %w", err)
+	}
+
+	preferencesStorage, err := storage.NewPreferencesStorage(dataDB)
+	if err != nil {
+		return fmt.Errorf("failed to initialize preferences storage: %w", err)
+	}
+
+	userManager := user.NewManager(userStorage, workoutStorage, exerciseCache, syncStorage, aiSettingsStorage, preferencesStorage)
 
 	tbAPI, err := tbapi.NewBotAPI(telegramToken)
 	if err != nil {
@@ -84,15 +94,20 @@ func execute(ctx context.Context) error {
 	}
 
 	commandHandler := &events.BotCommandHandler{
-		TbAPI:              tbAPI,
-		UserManager:        userManager,
-		SetAwaitingHevyKey: messageHandler.SetAwaitingHevyKey,
+		TbAPI:                tbAPI,
+		UserManager:          userManager,
+		SetAwaitingHevyKey:   messageHandler.SetAwaitingHevyKey,
+		SetAwaitingOpenAIKey: messageHandler.SetAwaitingOpenAIKey,
+		SetAwaitingNotes:     messageHandler.SetAwaitingNotes,
 	}
 
 	callbackQueryHandler := &events.BotCallbackQueryHandler{
-		TbAPI:              tbAPI,
-		UserManager:        userManager,
-		SetAwaitingHevyKey: messageHandler.SetAwaitingHevyKey,
+		TbAPI:                tbAPI,
+		UserManager:          userManager,
+		SetAwaitingHevyKey:   messageHandler.SetAwaitingHevyKey,
+		SetAwaitingOpenAIKey: messageHandler.SetAwaitingOpenAIKey,
+		SetAwaitingNotes:     messageHandler.SetAwaitingNotes,
+		SetAwaitingGoalText:  messageHandler.SetAwaitingGoalText,
 	}
 
 	listener := events.TelegramListener{

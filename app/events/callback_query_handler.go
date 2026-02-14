@@ -10,9 +10,12 @@ import (
 )
 
 type BotCallbackQueryHandler struct {
-	TbAPI              TbAPI
-	UserManager        UserManager
-	SetAwaitingHevyKey func(userID, chatID int64)
+	TbAPI                TbAPI
+	UserManager          UserManager
+	SetAwaitingHevyKey   func(userID, chatID int64)
+	SetAwaitingOpenAIKey func(userID, chatID int64)
+	SetAwaitingNotes     func(userID, chatID int64)
+	SetAwaitingGoalText  func(userID, chatID int64)
 }
 
 func (h *BotCallbackQueryHandler) HandleCallbackQuery(ctx context.Context, update tbapi.Update) {
@@ -32,9 +35,17 @@ func (h *BotCallbackQueryHandler) HandleCallbackQuery(ctx context.Context, updat
 	case data == "fetch_last":
 		h.handleFetchLast(ctx, query)
 	case data == "show_analyze":
-		h.handleShowAnalyze(query)
+		h.handleShowAnalyze(ctx, query)
+	case data == "ai_insights":
+		h.handleAIInsights(ctx, query)
+	case data == "get_advice":
+		h.handleGetAdvice(ctx, query)
 	case strings.HasPrefix(data, "analyze_"):
 		h.handleAnalyze(query)
+	case strings.HasPrefix(data, "set_goal_"):
+		h.handleSetGoal(query)
+	case strings.HasPrefix(data, "set_model_"):
+		h.handleSetModel(query)
 	}
 }
 
@@ -126,13 +137,14 @@ func (h *BotCallbackQueryHandler) handleFetchLast(ctx context.Context, query *tb
 	send(msg, h.TbAPI)
 }
 
-func (h *BotCallbackQueryHandler) handleShowAnalyze(query *tbapi.CallbackQuery) {
+func (h *BotCallbackQueryHandler) handleShowAnalyze(ctx context.Context, query *tbapi.CallbackQuery) {
+	userID := query.From.ID
 	chatID := query.Message.Chat.ID
 
 	callback := tbapi.NewCallback(query.ID, "")
 	h.TbAPI.Request(callback)
 
-	keyboard := tbapi.NewInlineKeyboardMarkup(
+	rows := [][]tbapi.InlineKeyboardButton{
 		tbapi.NewInlineKeyboardRow(
 			tbapi.NewInlineKeyboardButtonData("Volume Report", "analyze_volume"),
 			tbapi.NewInlineKeyboardButtonData("Progressive Overload", "analyze_overload"),
@@ -141,7 +153,16 @@ func (h *BotCallbackQueryHandler) handleShowAnalyze(query *tbapi.CallbackQuery) 
 			tbapi.NewInlineKeyboardButtonData("Muscle Balance", "analyze_balance"),
 			tbapi.NewInlineKeyboardButtonData("Full Report", "analyze_full"),
 		),
-	)
+	}
+
+	aiConfigured, _ := h.UserManager.IsAIConfigured(userID)
+	if aiConfigured {
+		rows = append(rows, tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonData("AI Insights", "ai_insights"),
+		))
+	}
+
+	keyboard := tbapi.NewInlineKeyboardMarkup(rows...)
 
 	msg := tbapi.NewMessage(chatID, "Choose analysis type:")
 	msg.ReplyMarkup = keyboard
@@ -167,5 +188,107 @@ func (h *BotCallbackQueryHandler) handleAnalyze(query *tbapi.CallbackQuery) {
 	}
 
 	msg := tbapi.NewMessage(chatID, result)
+	send(msg, h.TbAPI)
+}
+
+func (h *BotCallbackQueryHandler) handleAIInsights(ctx context.Context, query *tbapi.CallbackQuery) {
+	userID := query.From.ID
+	chatID := query.Message.Chat.ID
+
+	callback := tbapi.NewCallback(query.ID, "Thinking...")
+	h.TbAPI.Request(callback)
+
+	// Run full analysis first
+	analysisText, err := h.UserManager.RunAnalysis(userID, "")
+	if err != nil {
+		msg := tbapi.NewMessage(chatID, fmt.Sprintf("Analysis failed: %v", err))
+		send(msg, h.TbAPI)
+		return
+	}
+
+	msg := tbapi.NewMessage(chatID, "Analyzing with AI...")
+	send(msg, h.TbAPI)
+
+	result, err := h.UserManager.GetAnalysisInsights(ctx, userID, analysisText)
+	if err != nil {
+		log.Printf("[error] AI insights failed for user %d: %v", userID, err)
+		msg := tbapi.NewMessage(chatID, fmt.Sprintf("Failed: %v", err))
+		send(msg, h.TbAPI)
+		return
+	}
+
+	msg = tbapi.NewMessage(chatID, result)
+	send(msg, h.TbAPI)
+}
+
+func (h *BotCallbackQueryHandler) handleGetAdvice(ctx context.Context, query *tbapi.CallbackQuery) {
+	userID := query.From.ID
+	chatID := query.Message.Chat.ID
+
+	callback := tbapi.NewCallback(query.ID, "Thinking...")
+	h.TbAPI.Request(callback)
+
+	msg := tbapi.NewMessage(chatID, "Thinking...")
+	send(msg, h.TbAPI)
+
+	result, err := h.UserManager.GetAdvice(ctx, userID)
+	if err != nil {
+		log.Printf("[error] get advice failed for user %d: %v", userID, err)
+		msg := tbapi.NewMessage(chatID, fmt.Sprintf("Failed: %v", err))
+		send(msg, h.TbAPI)
+		return
+	}
+
+	msg = tbapi.NewMessage(chatID, result)
+	send(msg, h.TbAPI)
+}
+
+func (h *BotCallbackQueryHandler) handleSetGoal(query *tbapi.CallbackQuery) {
+	userID := query.From.ID
+	chatID := query.Message.Chat.ID
+	goal := strings.TrimPrefix(query.Data, "set_goal_")
+
+	callback := tbapi.NewCallback(query.ID, "")
+	h.TbAPI.Request(callback)
+
+	if goal == "custom" {
+		msg := tbapi.NewMessage(chatID, "Send me your custom training goal:")
+		send(msg, h.TbAPI)
+		if h.SetAwaitingGoalText != nil {
+			h.SetAwaitingGoalText(userID, chatID)
+		}
+		return
+	}
+
+	// Capitalize
+	goalText := strings.ToUpper(goal[:1]) + goal[1:]
+
+	if err := h.UserManager.SetGoals(userID, goalText); err != nil {
+		log.Printf("[error] failed to set goal: %v", err)
+		msg := tbapi.NewMessage(chatID, "Failed to save goal.")
+		send(msg, h.TbAPI)
+		return
+	}
+
+	msg := tbapi.NewMessage(chatID, fmt.Sprintf("Goal set: %s", goalText))
+	send(msg, h.TbAPI)
+}
+
+func (h *BotCallbackQueryHandler) handleSetModel(query *tbapi.CallbackQuery) {
+	userID := query.From.ID
+	chatID := query.Message.Chat.ID
+	model := strings.TrimPrefix(query.Data, "set_model_")
+
+	callback := tbapi.NewCallback(query.ID, "")
+	h.TbAPI.Request(callback)
+
+	if err := h.UserManager.SetAIModel(userID, model); err != nil {
+		log.Printf("[error] failed to set model: %v", err)
+		msg := tbapi.NewMessage(chatID, "Failed to save model.")
+		send(msg, h.TbAPI)
+		return
+	}
+
+	msg := tbapi.NewMessage(chatID, fmt.Sprintf("Model set: %s", model))
 	send(msg, h.TbAPI)
 }
