@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-GymBuddy is a Telegram bot (Go) that acts as a fitness companion — it integrates with the **Strong** workout app, lets users import workouts (via shared text or CSV export), provides an exercise database with 800+ exercises, and generates random workout plans.
+GymBuddy is a Telegram bot (Go) that acts as an AI-powered fitness coach. It integrates with the **Hevy** workout tracker via its REST API, syncs workout history to a local SQLite database, and provides training analysis (volume, progressive overload, muscle balance, frequency).
 
 ## Build & Run Commands
 
@@ -14,15 +14,6 @@ go build -o gym-buddy-bot ./app
 
 # Run
 go run ./app/main.go
-
-# Run all tests
-go test ./...
-
-# Run a single package's tests
-go test ./app/strong/...
-
-# Run a single test
-go test -run TestParseSingleWorkout ./app/strong/...
 
 # Vet
 go vet ./...
@@ -35,96 +26,74 @@ Set in `deployments/.env` (see `deployments/example.env`):
 - `TELEGRAM_TOKEN` — Telegram bot token (required)
 - `DATA_FILE_PATH` — SQLite database file path, e.g. `data.db` (required)
 - `REVISION` — environment label shown at startup (optional)
-- `HEVY_API_KEY` — Hevy API key for workout sync (optional, requires Hevy Pro)
 
 ## Architecture
 
-**Entry point:** `app/main.go` — loads env vars, opens SQLite DB, initializes `UserManager` and `ExerciseManager`, starts the Telegram listener.
+**Entry point:** `app/main.go` — loads env vars, opens SQLite DB, initializes all storage layers and `UserManager`, starts the Telegram listener.
 
 ### Event Handling Layer (`app/events/`)
 
 `TelegramListener` polls Telegram for updates and dispatches to three handlers based on update type:
 
-- **CommandHandler** — bot commands (`/start`, `/history`)
-- **MessageHandler** — processes document uploads (Strong CSV) and shared workout text
-- **CallbackQueryHandler** — inline keyboard button presses (`get_exercises`, `exercise_info_{id}`, `remove_exercise_{id}`, `replace_exercise_{id}`, `back_to_exercises`)
+- **CommandHandler** — bot commands (`/start`, `/connect`, `/disconnect`, `/init`, `/sync`, `/last`, `/analyze`)
+- **MessageHandler** — processes incoming text messages (currently handles Hevy API key input during connection flow)
+- **CallbackQueryHandler** — inline keyboard button presses (`connect_hevy`, `init_sync`, `run_sync`, `fetch_last`, `show_analyze`, `analyze_volume`, `analyze_overload`, `analyze_balance`, `analyze_full`)
 
-All handlers receive `UserManager` and `ExerciseManager` as dependencies. The `events.go` file defines shared interfaces and utility functions.
+All handlers receive `UserManager` as their dependency. The `events.go` file defines the `UserManager` interface and shared utility functions.
 
 ### Business Logic
 
-- **`app/user/user.go`** — `UserManager` is the main facade that coordinates user operations, exercise management, and workout storage. Handlers call into this rather than storage directly.
-- **`app/exercises/exercises.go`** — `ExerciseManager` loads `exercises.json` at startup and provides exercise lookup/random selection.
+- **`app/user/user.go`** — `UserManager` is the main facade. It coordinates user operations, Hevy API calls, workout sync, and analysis. Defines storage interfaces (`Storage`, `WorkoutStorage`, `ExerciseCacheStorage`, `SyncStorage`) to decouple from concrete implementations.
+
+### Hevy API Client (`app/hevy/`)
+
+- **`client.go`** — HTTP client for the Hevy REST API (`https://api.hevyapp.com/v1`). Handles pagination, rate limiting, auth via `api-key` header.
+- **`models.go`** — Go structs matching Hevy API responses: `Workout`, `Exercise`, `Set`, `ExerciseTemplate`, `Routine`.
+
+Key API interactions:
+- Fetching all workouts (paginated) during `/init` sync
+- Fetching page 1 for incremental `/sync`
+- Fetching exercise templates for muscle group data
+- Individual workout fetch for `/last`
+
+### Analysis Engine (`app/analysis/`)
+
+Pure Go analysis with no external dependencies:
+
+- **`models.go`** — Result types: `AnalysisResult`, `VolumeReport`, `OverloadReport`, `BalanceReport`, `FrequencyReport`
+- **`volume.go`** — Weekly sets per muscle group (primary: 1.0, secondary: 0.5 credit, excludes warmup), tonnage, status thresholds (<10 low, 10-20 optimal, >20 high)
+- **`progressive.go`** — Estimated 1RM tracking via Epley formula (`weight * (1 + reps/30)`), trend detection by comparing last 3 vs previous 3 sessions (>2.5% change threshold)
+- **`balance.go`** — Push/Pull/Legs classification, ratio analysis with imbalance flags
+- **`frequency.go`** — Workouts per week, session duration, per-muscle frequency, rest days
+- **`engine.go`** — `Analyze()` coordinator + `Format*()` functions for Telegram-friendly text output
 
 ### Storage Layer (`app/storage/`)
 
 SQLite via `sqlx` + `modernc.org/sqlite` (pure Go, no CGo). Schema defined in `schema.sql`.
 
 - `storage.go` — DB connection factory
-- `user.go` — user CRUD
-- `exercise.go` — user-exercise associations
-- `workout.go` — workout and workout_set persistence
+- `user.go` — user CRUD (telegram_id, username, hevy_api_key, state)
+- `workout.go` — workout, exercise, and set persistence (synced from Hevy)
+- `exercise_cache.go` — cached Hevy exercise templates for muscle group lookups
+- `sync.go` — per-user sync state tracking (last sync time, workout count)
 
-Key tables: `users`, `user_exercises`, `workouts`, `workout_sets`. See `schema.sql` for full schema including indexes and foreign keys.
-
-### Strong App Parsers (`app/strong/`)
-
-- **`text_parser.go`** — parses workout text shared from Strong app. Detects format by checking for day-of-week on line 2. Supports European decimal format (e.g. `17,5 kg`) and bodyweight exercises.
-- **`csv_parser.go`** — parses Strong CSV exports, groups sets by workout date/name, handles duplicate detection.
-- **`model.go`** — shared data structures (`Workout`, `WorkoutSet`).
-
-Both parsers have dedicated test files with good coverage.
+Key tables: `users`, `workouts`, `workout_exercises`, `workout_sets`, `exercise_templates`, `sync_state`. See `schema.sql` for full schema.
 
 ## Key Patterns
 
 - The bot uses `go-telegram-bot-api/v5` — messages are sent via `tgbotapi.NewMessage()`, inline keyboards via `tgbotapi.NewInlineKeyboardMarkup()`, and callbacks answered with `tgbotapi.NewCallback()`.
-- Callback data uses underscore-delimited prefixes for routing (e.g. `exercise_info_`, `remove_exercise_`).
+- Callback data uses underscore-delimited prefixes for routing (e.g. `connect_hevy`, `analyze_volume`).
+- The `/start` command shows an adaptive menu with 3 states: not connected, connected but not synced, fully synced.
 - The module path is `github.com/qfpeeeer/gym-buddy-bot`.
+- Hevy API auth is per-user — each user provides their own API key via `/connect`. Keys are stored in the `users` table.
+- Analysis runs entirely on locally synced data (no API calls needed after sync).
 
-## Future Direction: Migration from Strong to Hevy
-
-The project is planned to migrate from Strong app integration to **Hevy** (https://hevy.com).
-
-### Why Hevy
-
-- Strong has no public API; the only reversed API (https://github.com/dmzoneill/strongapp-api) is abandoned, Android-only, and unreliable.
-- Hevy has an **official public REST API** with full CRUD on workouts, routines, and exercises.
-- Hevy supports **import from Strong CSV**, so existing users can migrate their data.
-- Hevy has a polished iOS and Android app with 11M+ users.
-
-### Hevy API Reference
+## Hevy API Reference
 
 - **Swagger docs:** https://api.hevyapp.com/docs/
 - **Base URL:** `https://api.hevyapp.com/v1`
 - **Auth:** `api-key` header (each user gets their key from https://hevy.com/settings?developer)
 - **Requires:** Hevy Pro subscription for API access
-
-### Hevy API Endpoints (Verified Feb 2026)
-
-**Workouts:**
-- `GET /v1/workouts?page=&pageSize=` — list workouts (paginated)
-- `GET /v1/workouts/{id}` — get single workout with exercises & sets
-- `POST /v1/workouts` — create workout (requires `is_private` field)
-- `PUT /v1/workouts/{id}` — update workout
-- `GET /v1/workouts/count` — total workout count
-- `GET /v1/workouts/events?page=&pageSize=` — event feed for polling changes
-
-**Exercise Templates:**
-- `GET /v1/exercise_templates?page=&pageSize=` — list exercises (429 built-in exercises, 86 pages x 5)
-- `GET /v1/exercise_templates/{id}` — get single exercise
-- `POST /v1/exercise_templates` — create custom exercise (fields: `title`, `exercise_type`, `muscle_group`, `equipment_category`)
-
-**Routines:**
-- `GET /v1/routines?page=&pageSize=` — list routines
-- `GET /v1/routines/{id}` — get single routine
-- `POST /v1/routines` — create routine (requires `folder_id`, use `null` for no folder)
-- `PUT /v1/routines/{id}` — update routine (do NOT include `folder_id`)
-
-**Routine Folders:**
-- `GET /v1/routine_folders?page=&pageSize=` — list folders
-- `POST /v1/routine_folders` — create folder
-
-**Not available:** DELETE on any resource, webhooks, exercise template count, routine events.
 
 ### Hevy Data Model Enums
 
@@ -132,20 +101,4 @@ The project is planned to migrate from Strong app integration to **Hevy** (https
 
 **Muscle groups:** `abdominals`, `shoulders`, `biceps`, `triceps`, `forearms`, `quadriceps`, `hamstrings`, `calves`, `glutes`, `abductors`, `adductors`, `lats`, `upper_back`, `traps`, `lower_back`, `chest`, `cardio`, `neck`, `full_body`, `other`
 
-**Equipment:** `none`, `barbell`, `dumbbell`, `kettlebell`, `machine`, `plate`, `resistance_band`, `suspension`, `other`
-
-**Set types:** `normal` (likely also: `warmup`, `dropset`, `failure`)
-
-### Migration Plan
-
-1. Add Hevy API client package (`app/hevy/`) for fetching workouts and exercises via REST API.
-2. Add per-user `hevy_api_key` storage (new column or table in SQLite).
-3. Add a bot command (e.g. `/connect_hevy`) for users to provide their Hevy API key.
-4. Implement automatic workout sync from Hevy as an alternative to manual CSV/text import.
-5. Keep Strong parsers working for backwards compatibility during transition.
-
-### Useful Community Projects
-
-- Go-compatible OpenAPI spec: https://github.com/chrisdoc/hevy-mcp (has `openapi-spec.json`)
-- Python client reference: https://github.com/remuzel/hevy-api
-- TypeScript client: https://github.com/mustafamohsen/HevyAPI
+**Set types:** `normal`, `warmup`, `dropset`, `failure`

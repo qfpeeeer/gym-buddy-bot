@@ -1,45 +1,75 @@
-# gym-buddy-bot
+# GymBuddy Bot
 
-GymBuddy is a Telegram bot designed to be your virtual fitness companion, helping you track gym exercises and receive
-personalized workout recommendations. It provides exercise guidance and motivation directly in your Telegram chat.
+A Telegram bot that integrates with [Hevy](https://hevy.com) to act as an AI-powered training coach. Hevy handles workout logging in the gym; the bot provides analysis, recommendations, and routine generation.
 
-## Core Features
+## Features
 
-### 1. Google Sheets Integration
+- **Hevy Integration** — connect your Hevy account via API key, sync workouts automatically
+- **Workout Sync** — full initial sync (`/init`) and incremental updates (`/sync`)
+- **Latest Workout** — view your most recent session with volume comparison (`/last`)
+- **Training Analysis** — algorithmic analysis of your training data (`/analyze`):
+  - Volume report — weekly sets & tonnage per muscle group
+  - Progressive overload — estimated 1RM trends (Epley formula)
+  - Muscle balance — push/pull/legs ratios with imbalance warnings
+  - Training frequency — workouts/week, session duration, rest days
 
-- Users connect their Google Sheets upon `/start`
-- Bot tracks weights, exercises, and reps in the user's sheet
-- TODO: Research Google Sheets API integration and authentication
+## Setup
 
-### 2. Main Menu
+### Prerequisites
 
-#### 2.1 Get Today's Exercises
+- Go 1.21+
+- Telegram bot token (from [@BotFather](https://t.me/BotFather))
+- Hevy Pro subscription (for API access)
 
-1. **Change**
-    - Change rep count
-    - Change suggested weight
-    - Change the exercise
-        - Suggest similar
-        - Search
-2. **Start Today's Session**
+### Configuration
 
-#### 2.2 Logging Today's Exercises
+Copy `deployments/example.env` to `deployments/.env` and fill in:
 
-- Display exercises as `[Exercise Name X/Y]` (e.g., `[Push ups 2/4]`)
-- Show exercise description from `exercises.json`
-- For each exercise:
-    1. `[✅ Completed rep]`
-    2. `[🔄 Completed with different weight]`
-    3. `[🔶 Partially completed rep]`
+```env
+TELEGRAM_TOKEN=your-telegram-bot-token
+DATA_FILE_PATH=data.db
+HEVY_API_KEY=your-hevy-api-key
+```
 
-#### 2.3 View Progress
+### Build & Run
 
-- Display charts and statistics
-- Show streaks and achievements
-- TODO: Research Google Sheets API integration and authentication for data visualization
+```bash
+go build -o gym-buddy-bot ./app
+./gym-buddy-bot
+```
 
-#### 2.4 Settings
+## Bot Commands
 
-- Change Google Sheets
-- Change workout plan
-- TODO: Research Google Sheets API integration and authentication
+| Command | Description |
+|---------|-------------|
+| `/start` | Show main menu (adapts to connection/sync state) |
+| `/connect` | Connect your Hevy account |
+| `/disconnect` | Disconnect Hevy account |
+| `/init` | Full sync — import all workouts + exercise templates |
+| `/sync` | Incremental sync — fetch new workouts |
+| `/last` | Show latest workout with volume comparison |
+| `/analyze` | Training analysis (volume, overload, balance, full report) |
+
+## Architecture
+
+```
+app/
+  main.go              — entry point, wiring
+  hevy/                — Hevy REST API client (workouts, exercises, routines)
+  storage/             — SQLite storage (users, workouts, exercise cache, sync state)
+  user/                — business logic facade (sync orchestration, analysis)
+  analysis/            — training analysis engine (volume, overload, balance, frequency)
+  events/              — Telegram event handlers (commands, messages, callbacks)
+scripts/
+  import_to_hevy.go    — one-time Strong CSV to Hevy import script
+```
+
+## Roadmap
+
+See [PLAN.md](PLAN.md) for the full implementation plan.
+
+- [x] Phase 1: Hevy API client + user connection
+- [x] Phase 2: Workout sync + exercise template cache
+- [x] Phase 3: Analysis engine
+- [ ] Phase 4: LLM integration (Claude/OpenAI) for smart recommendations
+- [ ] Phase 5: AI-powered routine generation + push to Hevy
