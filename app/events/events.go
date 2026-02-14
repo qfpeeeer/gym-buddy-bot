@@ -6,6 +6,7 @@ import (
 	"log"
 
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/qfpeeeer/gym-buddy-bot/app/hevy"
 )
 
 // TbAPI is an interface for telegram bot API, only subset of methods used
@@ -34,6 +35,12 @@ type UserManager interface {
 	GetHevyAPIKey(telegramID int64) (string, error)
 	ClearHevyAPIKey(telegramID int64) error
 	IsHevyConnected(telegramID int64) (bool, error)
+	IsSynced(userID int64) (bool, error)
+	InitSync(ctx context.Context, userID int64, progress func(string)) error
+	IncrementalSync(ctx context.Context, userID int64) (int, error)
+	GetLastWorkout(ctx context.Context, userID int64) (*hevy.Workout, error)
+	GetWorkoutsByTitle(userID int64, title string) ([]hevy.Workout, error)
+	RunAnalysis(userID int64, reportType string) (string, error)
 }
 
 // send a message to the telegram as markdown first and if failed - as plain text

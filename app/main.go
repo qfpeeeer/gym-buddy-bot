@@ -55,7 +55,22 @@ func execute(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize user storage: %w", err)
 	}
 
-	userManager := user.NewManager(userStorage)
+	workoutStorage, err := storage.NewWorkoutStorage(dataDB)
+	if err != nil {
+		return fmt.Errorf("failed to initialize workout storage: %w", err)
+	}
+
+	exerciseCache, err := storage.NewExerciseCacheStorage(dataDB)
+	if err != nil {
+		return fmt.Errorf("failed to initialize exercise cache: %w", err)
+	}
+
+	syncStorage, err := storage.NewSyncStorage(dataDB)
+	if err != nil {
+		return fmt.Errorf("failed to initialize sync storage: %w", err)
+	}
+
+	userManager := user.NewManager(userStorage, workoutStorage, exerciseCache, syncStorage)
 
 	tbAPI, err := tbapi.NewBotAPI(telegramToken)
 	if err != nil {
