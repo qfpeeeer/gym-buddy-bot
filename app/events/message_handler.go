@@ -19,11 +19,16 @@ type BotMessageHandler struct {
 	TbAPI       TbAPI
 	UserManager UserManager
 
-	mu               sync.Mutex
-	awaitingHevyKey  map[int64]awaitingState
-	awaitingAIKey    map[int64]awaitingState
-	awaitingNotes    map[int64]awaitingState
-	awaitingGoalText map[int64]awaitingState
+	// GenerateAndPreview is set by main.go to call through to the callback handler's logic.
+	GenerateAndPreview func(ctx context.Context, userID, chatID int64, tplType, typeName, extraNotes string)
+
+	mu                 sync.Mutex
+	awaitingHevyKey    map[int64]awaitingState
+	awaitingAIKey      map[int64]awaitingState
+	awaitingNotes      map[int64]awaitingState
+	awaitingGoalText   map[int64]awaitingState
+	awaitingCustomTpl  map[int64]awaitingState
+	awaitingRegenNotes map[int64]awaitingState
 }
 
 // SetAwaitingHevyKey marks a user as awaiting Hevy API key input.
@@ -66,6 +71,26 @@ func (h *BotMessageHandler) SetAwaitingGoalText(userID, chatID int64) {
 	h.awaitingGoalText[userID] = awaitingState{chatID: chatID}
 }
 
+// SetAwaitingCustomTplType marks a user as awaiting custom template type text.
+func (h *BotMessageHandler) SetAwaitingCustomTplType(userID, chatID int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.awaitingCustomTpl == nil {
+		h.awaitingCustomTpl = make(map[int64]awaitingState)
+	}
+	h.awaitingCustomTpl[userID] = awaitingState{chatID: chatID}
+}
+
+// SetAwaitingRegenNotes marks a user as awaiting regen notes text.
+func (h *BotMessageHandler) SetAwaitingRegenNotes(userID, chatID int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.awaitingRegenNotes == nil {
+		h.awaitingRegenNotes = make(map[int64]awaitingState)
+	}
+	h.awaitingRegenNotes[userID] = awaitingState{chatID: chatID}
+}
+
 func (h *BotMessageHandler) HandleMessages(ctx context.Context, update tbapi.Update) {
 	messageText := update.Message.Text
 	if messageText == "" {
@@ -87,6 +112,12 @@ func (h *BotMessageHandler) HandleMessages(ctx context.Context, update tbapi.Upd
 		return
 	}
 	if h.handleGoalTextInput(userID, chatID, messageText) {
+		return
+	}
+	if h.handleCustomTplInput(ctx, userID, chatID, messageText) {
+		return
+	}
+	if h.handleRegenNotesInput(ctx, userID, chatID, messageText) {
 		return
 	}
 }
@@ -253,5 +284,57 @@ func (h *BotMessageHandler) handleGoalTextInput(userID, chatID int64, text strin
 
 	msg := tbapi.NewMessage(chatID, fmt.Sprintf("Goal set: %s", goal))
 	send(msg, h.TbAPI)
+	return true
+}
+
+func (h *BotMessageHandler) handleCustomTplInput(ctx context.Context, userID, chatID int64, text string) bool {
+	h.mu.Lock()
+	_, awaiting := h.awaitingCustomTpl[userID]
+	if awaiting {
+		delete(h.awaitingCustomTpl, userID)
+	}
+	h.mu.Unlock()
+
+	if !awaiting {
+		return false
+	}
+
+	customType := strings.TrimSpace(text)
+	if customType == "" {
+		msg := tbapi.NewMessage(chatID, "Empty description. Use /template to try again.")
+		send(msg, h.TbAPI)
+		return true
+	}
+
+	if h.GenerateAndPreview != nil {
+		h.GenerateAndPreview(ctx, userID, chatID, customType, customType, "")
+	}
+	return true
+}
+
+func (h *BotMessageHandler) handleRegenNotesInput(ctx context.Context, userID, chatID int64, text string) bool {
+	h.mu.Lock()
+	_, awaiting := h.awaitingRegenNotes[userID]
+	if awaiting {
+		delete(h.awaitingRegenNotes, userID)
+	}
+	h.mu.Unlock()
+
+	if !awaiting {
+		return false
+	}
+
+	notes := strings.TrimSpace(text)
+	if notes == "" {
+		msg := tbapi.NewMessage(chatID, "Empty notes. Use /template to try again.")
+		send(msg, h.TbAPI)
+		return true
+	}
+
+	if h.GenerateAndPreview != nil {
+		// For regen with notes, we don't know the original type from here,
+		// so we pass the notes as extra instructions with a generic type.
+		h.GenerateAndPreview(ctx, userID, chatID, "custom_regen", "workout (same style as the previous attempt)", notes)
+	}
 	return true
 }

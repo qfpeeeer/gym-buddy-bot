@@ -7,6 +7,7 @@ import (
 
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/qfpeeeer/gym-buddy-bot/app/hevy"
+	"github.com/qfpeeeer/gym-buddy-bot/app/llm"
 	"github.com/qfpeeeer/gym-buddy-bot/app/storage"
 )
 
@@ -58,6 +59,10 @@ type UserManager interface {
 	GetAdvice(ctx context.Context, userID int64) (string, error)
 	AskQuestion(ctx context.Context, userID int64, question string) (string, error)
 	GetAnalysisInsights(ctx context.Context, userID int64, analysisText string) (string, error)
+
+	// Template generation
+	GenerateTemplate(ctx context.Context, userID int64, workoutType string, extraNotes string) (*llm.TemplateResponse, error)
+	PushRoutineToHevy(ctx context.Context, userID int64, template *llm.TemplateResponse) error
 }
 
 // send a message to the telegram as markdown first and if failed - as plain text

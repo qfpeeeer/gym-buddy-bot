@@ -102,13 +102,18 @@ func execute(ctx context.Context) error {
 	}
 
 	callbackQueryHandler := &events.BotCallbackQueryHandler{
-		TbAPI:                tbAPI,
-		UserManager:          userManager,
-		SetAwaitingHevyKey:   messageHandler.SetAwaitingHevyKey,
-		SetAwaitingOpenAIKey: messageHandler.SetAwaitingOpenAIKey,
-		SetAwaitingNotes:     messageHandler.SetAwaitingNotes,
-		SetAwaitingGoalText:  messageHandler.SetAwaitingGoalText,
+		TbAPI:                    tbAPI,
+		UserManager:              userManager,
+		SetAwaitingHevyKey:       messageHandler.SetAwaitingHevyKey,
+		SetAwaitingOpenAIKey:     messageHandler.SetAwaitingOpenAIKey,
+		SetAwaitingNotes:         messageHandler.SetAwaitingNotes,
+		SetAwaitingGoalText:      messageHandler.SetAwaitingGoalText,
+		SetAwaitingCustomTplType: messageHandler.SetAwaitingCustomTplType,
+		SetAwaitingRegenNotes:    messageHandler.SetAwaitingRegenNotes,
 	}
+
+	// Wire the generate-and-preview callback from callback handler to message handler.
+	messageHandler.GenerateAndPreview = callbackQueryHandler.GenerateAndPreview
 
 	listener := events.TelegramListener{
 		TbAPI:                tbAPI,

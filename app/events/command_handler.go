@@ -53,6 +53,8 @@ func (h *BotCommandHandler) HandleCommands(ctx context.Context, update tbapi.Upd
 		h.handleAdvice(ctx, chatID, userID)
 	case "ask":
 		h.handleAsk(ctx, chatID, userID, update.Message.CommandArguments())
+	case "template":
+		h.handleTemplate(chatID, userID)
 	}
 }
 
@@ -98,7 +100,7 @@ func (h *BotCommandHandler) handleStart(ctx context.Context, chatID, userID int6
 	} else if !synced {
 		text += "Your Hevy account is connected! Run /init to import your workout history."
 	} else {
-		text += "Your Hevy account is connected and synced.\n\nCommands:\n/last — latest workout\n/sync — fetch new workouts\n/analyze — training analysis\n/advice — AI recommendations\n/ask — ask your AI coach\n/goals — set training goals\n/notes — set training preferences\n/setup_ai — configure OpenAI"
+		text += "Your Hevy account is connected and synced.\n\nCommands:\n/last — latest workout\n/sync — fetch new workouts\n/analyze — training analysis\n/advice — AI recommendations\n/ask — ask your AI coach\n/template — generate workout template\n/goals — set training goals\n/notes — set training preferences\n/setup_ai — configure OpenAI"
 	}
 
 	msg := tbapi.NewMessage(chatID, text)
@@ -413,6 +415,49 @@ func (h *BotCommandHandler) handleAdvice(ctx context.Context, chatID, userID int
 
 	msg = tbapi.NewMessage(chatID, result)
 	send(msg, h.TbAPI)
+}
+
+func (h *BotCommandHandler) handleTemplate(chatID, userID int64) {
+	aiConfigured, _ := h.UserManager.IsAIConfigured(userID)
+	if !aiConfigured {
+		msg := tbapi.NewMessage(chatID, "OpenAI not configured. Use /setup_ai first.")
+		send(msg, h.TbAPI)
+		return
+	}
+
+	synced, _ := h.UserManager.IsSynced(userID)
+	if !synced {
+		msg := tbapi.NewMessage(chatID, "No workout data. Run /init first.")
+		send(msg, h.TbAPI)
+		return
+	}
+
+	keyboard := tbapi.NewInlineKeyboardMarkup(
+		tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonData("Push Day", "gen_tpl_push"),
+			tbapi.NewInlineKeyboardButtonData("Pull Day", "gen_tpl_pull"),
+		),
+		tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonData("Leg Day", "gen_tpl_legs"),
+			tbapi.NewInlineKeyboardButtonData("Full Body", "gen_tpl_full"),
+		),
+		tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonData("Upper Body", "gen_tpl_upper"),
+			tbapi.NewInlineKeyboardButtonData("Lower Body", "gen_tpl_lower"),
+		),
+		tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonData("AI Recommends", "gen_tpl_ai"),
+		),
+		tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonData("Custom...", "gen_tpl_custom"),
+		),
+	)
+
+	msg := tbapi.NewMessage(chatID, "Choose workout type:")
+	msg.ReplyMarkup = keyboard
+	if _, err := h.TbAPI.Send(msg); err != nil {
+		log.Printf("[error] failed to send template menu: %v", err)
+	}
 }
 
 func (h *BotCommandHandler) handleAsk(ctx context.Context, chatID, userID int64, question string) {

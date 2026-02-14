@@ -360,3 +360,73 @@ func (m *Manager) askLLM(ctx context.Context, userID int64, question string) (st
 	client := llm.NewClient(settings.OpenAIKey, settings.Model)
 	return client.Chat(ctx, llm.CoachSystemPrompt, userMessage)
 }
+
+// --- Template Generation ---
+
+// GenerateTemplate generates a workout template via LLM.
+func (m *Manager) GenerateTemplate(ctx context.Context, userID int64, workoutType string, extraNotes string) (*llm.TemplateResponse, error) {
+	settings, err := m.aiSettings.GetAISettings(userID)
+	if err != nil || settings == nil || settings.OpenAIKey == "" {
+		return nil, fmt.Errorf("OpenAI not configured. Use /setup_ai first.")
+	}
+
+	workouts, err := m.workoutStorage.GetAllWorkouts(userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load workouts: %w", err)
+	}
+	if len(workouts) == 0 {
+		return nil, fmt.Errorf("no workouts found. Run /init first.")
+	}
+
+	templates, err := m.exerciseCache.GetAllTemplates()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load templates: %w", err)
+	}
+
+	prefs, _ := m.preferences.GetPreferences(userID)
+	result := analysis.Analyze(workouts, templates, 4)
+
+	contextStr := llm.BuildContextWithExercises(workouts, templates, prefs, result)
+
+	instruction := fmt.Sprintf("Generate a %s workout template for this client.", workoutType)
+	if extraNotes != "" {
+		instruction += fmt.Sprintf("\n\nAdditional instructions from the client: %s", extraNotes)
+	}
+
+	userMessage := contextStr + "\n" + instruction
+
+	systemPrompt := llm.CoachSystemPrompt + llm.TemplateGenerationPrompt
+
+	client := llm.NewClient(settings.OpenAIKey, settings.Model)
+	raw, err := client.Chat(ctx, systemPrompt, userMessage)
+	if err != nil {
+		return nil, fmt.Errorf("LLM request failed: %w", err)
+	}
+
+	tmpl, err := llm.ParseTemplateJSON(raw)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse LLM response: %w", err)
+	}
+
+	if err := llm.ValidateAndFixTemplate(tmpl, templates); err != nil {
+		return nil, fmt.Errorf("template validation failed: %w", err)
+	}
+
+	return tmpl, nil
+}
+
+// PushRoutineToHevy creates a routine in Hevy from a generated template.
+func (m *Manager) PushRoutineToHevy(ctx context.Context, userID int64, template *llm.TemplateResponse) error {
+	client, err := m.newHevyClient(userID)
+	if err != nil {
+		return err
+	}
+
+	req := llm.ToCreateRoutineRequest(template)
+	_, err = client.CreateRoutine(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to create routine in Hevy: %w", err)
+	}
+
+	return nil
+}
