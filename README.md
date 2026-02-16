@@ -1,6 +1,6 @@
 # GymBuddy Bot
 
-A Telegram bot that integrates with [Hevy](https://hevy.com) to act as an AI-powered training coach. Hevy handles workout logging in the gym; the bot provides analysis, recommendations, and routine generation.
+A Telegram bot that integrates with [Hevy](https://hevy.com) to act as an AI-powered training coach. Hevy handles workout logging in the gym; the bot provides analysis, smart recommendations, and AI-generated workout templates pushed directly to Hevy.
 
 ## Features
 
@@ -12,6 +12,15 @@ A Telegram bot that integrates with [Hevy](https://hevy.com) to act as an AI-pow
   - Progressive overload — estimated 1RM trends (Epley formula)
   - Muscle balance — push/pull/legs ratios with imbalance warnings
   - Training frequency — workouts/week, session duration, rest days
+- **AI Coach** — OpenAI-powered coaching using your real training data:
+  - `/advice` — personalized recommendations based on volume, overload, and balance analysis
+  - `/ask <question>` — ask your AI coach anything about your training
+  - AI Insights — natural language interpretation of analysis reports
+- **Workout Template Generation** — AI creates workout routines and pushes them to Hevy:
+  - `/template` — choose workout type (Push/Pull/Legs/Full/Upper/Lower/AI Recommends/Custom)
+  - Preview generated template before pushing
+  - Regenerate with custom notes (e.g. "more back width, drop curls")
+  - Routine appears directly in Hevy app
 
 ## Setup
 
@@ -20,6 +29,7 @@ A Telegram bot that integrates with [Hevy](https://hevy.com) to act as an AI-pow
 - Go 1.21+
 - Telegram bot token (from [@BotFather](https://t.me/BotFather))
 - Hevy Pro subscription (for API access)
+- OpenAI API key (optional, for AI coach features)
 
 ### Configuration
 
@@ -28,8 +38,9 @@ Copy `deployments/example.env` to `deployments/.env` and fill in:
 ```env
 TELEGRAM_TOKEN=your-telegram-bot-token
 DATA_FILE_PATH=data.db
-HEVY_API_KEY=your-hevy-api-key
 ```
+
+AI features are configured per-user via the `/setup_ai` command in Telegram (each user provides their own OpenAI API key).
 
 ### Build & Run
 
@@ -42,34 +53,57 @@ go build -o gym-buddy-bot ./app
 
 | Command | Description |
 |---------|-------------|
-| `/start` | Show main menu (adapts to connection/sync state) |
+| `/start` | Show main menu (adapts to connection/sync/AI state) |
 | `/connect` | Connect your Hevy account |
 | `/disconnect` | Disconnect Hevy account |
 | `/init` | Full sync — import all workouts + exercise templates |
 | `/sync` | Incremental sync — fetch new workouts |
 | `/last` | Show latest workout with volume comparison |
-| `/analyze` | Training analysis (volume, overload, balance, full report) |
+| `/analyze` | Training analysis (volume, overload, balance, full report, AI insights) |
+| `/setup_ai` | Configure OpenAI API key + model selection |
+| `/goals` | Set training goals (Hypertrophy/Strength/Endurance/Recomp/Custom) |
+| `/notes` | Set training notes and preferences |
+| `/advice` | Get AI coaching recommendations |
+| `/ask <question>` | Ask your AI coach a question |
+| `/template` | Generate a workout template with AI |
 
 ## Architecture
 
 ```
 app/
   main.go              — entry point, wiring
-  hevy/                — Hevy REST API client (workouts, exercises, routines)
-  storage/             — SQLite storage (users, workouts, exercise cache, sync state)
-  user/                — business logic facade (sync orchestration, analysis)
-  analysis/            — training analysis engine (volume, overload, balance, frequency)
-  events/              — Telegram event handlers (commands, messages, callbacks)
-scripts/
-  import_to_hevy.go    — one-time Strong CSV to Hevy import script
+  hevy/                — Hevy REST API client
+    client.go          — HTTP client with pagination, rate limiting
+    models.go          — API response structs
+    workouts.go        — workout endpoints
+    exercises.go       — exercise template endpoints
+    routines.go        — routine CRUD endpoints (create, update, fetch)
+  storage/             — SQLite storage layer
+    storage.go         — DB connection factory
+    user.go            — user CRUD
+    workout.go         — workout/exercise/set persistence
+    exercise_cache.go  — Hevy exercise template cache
+    sync.go            — per-user sync state
+    ai_settings.go     — per-user OpenAI key + model settings
+    preferences.go     — user training goals + notes
+  analysis/            — training analysis engine (pure Go)
+    engine.go          — coordinator + Telegram formatters
+    models.go          — result types
+    volume.go          — weekly sets & tonnage per muscle group
+    progressive.go     — estimated 1RM trends (Epley formula)
+    balance.go         — push/pull/legs ratio analysis
+    frequency.go       — workout frequency & rest days
+  llm/                 — AI coach (OpenAI integration, no SDK)
+    client.go          — OpenAI chat completions via net/http
+    prompts.go         — system prompts (coach persona, analysis, template generation)
+    context.go         — training context builder for LLM (profile, volume, overload, recent workouts)
+    template.go        — template JSON parsing, validation, preview, Hevy conversion
+  user/                — business logic facade
+    user.go            — UserManager: sync, analysis, AI advice, template generation
+  events/              — Telegram event handlers
+    listener.go        — update polling + dispatch
+    events.go          — UserManager interface + shared utilities
+    command_handler.go — bot command handlers
+    message_handler.go — text message handlers (API key input, custom goals, regen notes)
+    callback_query_handler.go — inline keyboard button handlers
 ```
-
-## Roadmap
-
-See [PLAN.md](PLAN.md) for the full implementation plan.
-
-- [x] Phase 1: Hevy API client + user connection
-- [x] Phase 2: Workout sync + exercise template cache
-- [x] Phase 3: Analysis engine
-- [ ] Phase 4: LLM integration (Claude/OpenAI) for smart recommendations
-- [ ] Phase 5: AI-powered routine generation + push to Hevy
