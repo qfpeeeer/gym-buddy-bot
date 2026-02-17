@@ -2,6 +2,7 @@ package llm
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -43,6 +44,111 @@ func BuildContextWithExercises(
 	buildAvailableExercises(&b, workouts, templates)
 
 	return b.String()
+}
+
+// BuildInsightsContext assembles a slim context for AI insights — key metrics only, no recent workouts.
+func BuildInsightsContext(
+	workouts []hevy.Workout,
+	templates []hevy.ExerciseTemplate,
+	prefs *storage.UserPreferences,
+	result *analysis.AnalysisResult,
+) string {
+	var b strings.Builder
+
+	buildProfile(&b, workouts, result)
+	buildPreferences(&b, prefs)
+	buildVolume(&b, result)
+	buildOverloadInsights(&b, result)
+	buildBalance(&b, result)
+
+	return b.String()
+}
+
+func buildOverloadInsights(b *strings.Builder, result *analysis.AnalysisResult) {
+	if result == nil || result.Overload == nil || len(result.Overload.Exercises) == 0 {
+		return
+	}
+
+	var progressing, stalling, regressing []analysis.ExerciseProgress
+	for _, ex := range result.Overload.Exercises {
+		switch ex.Trend {
+		case "progressing":
+			progressing = append(progressing, ex)
+		case "stalling":
+			stalling = append(stalling, ex)
+		case "regressing":
+			regressing = append(regressing, ex)
+		}
+	}
+
+	// Sort each group by magnitude of change (biggest movers first).
+	sortByChange := func(exercises []analysis.ExerciseProgress) {
+		sort.Slice(exercises, func(i, j int) bool {
+			return math.Abs(overloadChangePercent(exercises[i])) > math.Abs(overloadChangePercent(exercises[j]))
+		})
+	}
+	sortByChange(progressing)
+	sortByChange(stalling)
+	sortByChange(regressing)
+
+	b.WriteString("=== PROGRESSIVE OVERLOAD ===\n")
+	b.WriteString(fmt.Sprintf("Summary: %d progressing, %d stalling, %d regressing\n\n",
+		len(progressing), len(stalling), len(regressing)))
+
+	const cap = 5
+
+	if len(progressing) > 0 {
+		b.WriteString("Top progressing:\n")
+		for i, ex := range progressing {
+			if i >= cap {
+				break
+			}
+			pct := overloadChangePercent(ex)
+			b.WriteString(fmt.Sprintf("  %s: %.1f -> %.1f kg (%+.1f%%)\n",
+				ex.ExerciseName, overloadFirstE1RM(ex), ex.LatestE1RM, pct))
+		}
+		b.WriteString("\n")
+	}
+
+	if len(stalling) > 0 {
+		b.WriteString("Top stalling:\n")
+		for i, ex := range stalling {
+			if i >= cap {
+				break
+			}
+			b.WriteString(fmt.Sprintf("  %s: %.1f kg (best: %.1f)\n",
+				ex.ExerciseName, ex.LatestE1RM, ex.BestE1RM))
+		}
+		b.WriteString("\n")
+	}
+
+	if len(regressing) > 0 {
+		b.WriteString("Top regressing:\n")
+		for i, ex := range regressing {
+			if i >= cap {
+				break
+			}
+			pct := overloadChangePercent(ex)
+			b.WriteString(fmt.Sprintf("  %s: %.1f -> %.1f kg (%+.1f%%)\n",
+				ex.ExerciseName, overloadFirstE1RM(ex), ex.LatestE1RM, pct))
+		}
+		b.WriteString("\n")
+	}
+}
+
+func overloadChangePercent(ex analysis.ExerciseProgress) float64 {
+	first := overloadFirstE1RM(ex)
+	if first <= 0 {
+		return 0
+	}
+	return ((ex.LatestE1RM - first) / first) * 100
+}
+
+func overloadFirstE1RM(ex analysis.ExerciseProgress) float64 {
+	if len(ex.Sessions) > 0 {
+		return ex.Sessions[0].E1RM
+	}
+	return 0
 }
 
 func buildProfile(b *strings.Builder, workouts []hevy.Workout, result *analysis.AnalysisResult) {

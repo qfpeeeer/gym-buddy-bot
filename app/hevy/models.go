@@ -118,9 +118,26 @@ type CreateRoutineRequest struct {
 }
 
 type CreateRoutineBody struct {
-	Title     string            `json:"title"`
-	FolderID  *int              `json:"folder_id,omitempty"`
-	Exercises []RoutineExercise `json:"exercises"`
+	Title     string                  `json:"title"`
+	Notes     string                  `json:"notes"`
+	FolderID  *int                    `json:"folder_id"`
+	Exercises []CreateRoutineExercise `json:"exercises"`
+}
+
+type CreateRoutineExercise struct {
+	ExerciseTemplateID string             `json:"exercise_template_id"`
+	SupersetID         *int               `json:"superset_id,omitempty"`
+	RestSeconds        *int               `json:"rest_seconds,omitempty"`
+	Notes              string             `json:"notes,omitempty"`
+	Sets               []CreateRoutineSet `json:"sets"`
+}
+
+type CreateRoutineSet struct {
+	Type            string   `json:"type"`
+	WeightKG        *float64 `json:"weight_kg,omitempty"`
+	Reps            *int     `json:"reps,omitempty"`
+	DistanceMeters  *float64 `json:"distance_meters,omitempty"`
+	DurationSeconds *int     `json:"duration_seconds,omitempty"`
 }
 
 // UpdateRoutineRequest is the request body for PUT /v1/routines/{id}.
@@ -129,8 +146,8 @@ type UpdateRoutineRequest struct {
 }
 
 type UpdateRoutineBody struct {
-	Title     string            `json:"title"`
-	Exercises []RoutineExercise `json:"exercises"`
+	Title     string                  `json:"title"`
+	Exercises []CreateRoutineExercise `json:"exercises"`
 }
 
 // API response types.

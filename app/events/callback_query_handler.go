@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"fmt"
+	"html"
 	"log"
 	"strings"
 	"sync"
@@ -78,7 +79,7 @@ func (h *BotCallbackQueryHandler) handleConnectHevy(query *tbapi.CallbackQuery) 
 	callback := tbapi.NewCallback(query.ID, "")
 	h.TbAPI.Request(callback)
 
-	text := "Send me your Hevy API key.\n\nGet it from: hevy.com/settings > Developer section.\nRequires Hevy Pro subscription."
+	text := "Send me your Hevy API key.\n\nGet it from: hevy.com/settings &gt; Developer section.\nRequires Hevy Pro subscription."
 	msg := tbapi.NewMessage(chatID, text)
 	send(msg, h.TbAPI)
 
@@ -120,9 +121,9 @@ func (h *BotCallbackQueryHandler) handleRunSync(ctx context.Context, query *tbap
 		return
 	}
 
-	text := "Already up to date."
+	text := "✅ Already up to date."
 	if count > 0 {
-		text = fmt.Sprintf("Synced %d new workout(s).", count)
+		text = fmt.Sprintf("✅ Synced %d new workout(s).", count)
 	}
 	msg := tbapi.NewMessage(chatID, text)
 	send(msg, h.TbAPI)
@@ -168,25 +169,26 @@ func (h *BotCallbackQueryHandler) handleShowAnalyze(ctx context.Context, query *
 
 	rows := [][]tbapi.InlineKeyboardButton{
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Volume Report", "analyze_volume"),
-			tbapi.NewInlineKeyboardButtonData("Progressive Overload", "analyze_overload"),
+			tbapi.NewInlineKeyboardButtonData("📊 Volume", "analyze_volume"),
+			tbapi.NewInlineKeyboardButtonData("📈 Overload", "analyze_overload"),
 		),
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Muscle Balance", "analyze_balance"),
-			tbapi.NewInlineKeyboardButtonData("Full Report", "analyze_full"),
+			tbapi.NewInlineKeyboardButtonData("⚖️ Balance", "analyze_balance"),
+			tbapi.NewInlineKeyboardButtonData("🕐 Frequency", "analyze_frequency"),
 		),
 	}
 
 	aiConfigured, _ := h.UserManager.IsAIConfigured(userID)
 	if aiConfigured {
 		rows = append(rows, tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("AI Insights", "ai_insights"),
+			tbapi.NewInlineKeyboardButtonData("🤖 AI Insights", "ai_insights"),
 		))
 	}
 
 	keyboard := tbapi.NewInlineKeyboardMarkup(rows...)
 
-	msg := tbapi.NewMessage(chatID, "Choose analysis type:")
+	msg := tbapi.NewMessage(chatID, "<b>Training Analysis</b>\n\nChoose report type:")
+	msg.ParseMode = tbapi.ModeHTML
 	msg.ReplyMarkup = keyboard
 	if _, err := h.TbAPI.Send(msg); err != nil {
 		log.Printf("[error] failed to send analyze menu: %v", err)
@@ -220,18 +222,10 @@ func (h *BotCallbackQueryHandler) handleAIInsights(ctx context.Context, query *t
 	callback := tbapi.NewCallback(query.ID, "Thinking...")
 	h.TbAPI.Request(callback)
 
-	// Run full analysis first
-	analysisText, err := h.UserManager.RunAnalysis(userID, "")
-	if err != nil {
-		msg := tbapi.NewMessage(chatID, fmt.Sprintf("Analysis failed: %v", err))
-		send(msg, h.TbAPI)
-		return
-	}
-
-	msg := tbapi.NewMessage(chatID, "Analyzing with AI...")
+	msg := tbapi.NewMessage(chatID, "🤖 Analyzing with AI...")
 	send(msg, h.TbAPI)
 
-	result, err := h.UserManager.GetAnalysisInsights(ctx, userID, analysisText)
+	result, err := h.UserManager.GetAnalysisInsights(ctx, userID)
 	if err != nil {
 		log.Printf("[error] AI insights failed for user %d: %v", userID, err)
 		msg := tbapi.NewMessage(chatID, fmt.Sprintf("Failed: %v", err))
@@ -250,7 +244,7 @@ func (h *BotCallbackQueryHandler) handleGetAdvice(ctx context.Context, query *tb
 	callback := tbapi.NewCallback(query.ID, "Thinking...")
 	h.TbAPI.Request(callback)
 
-	msg := tbapi.NewMessage(chatID, "Thinking...")
+	msg := tbapi.NewMessage(chatID, "🤖 Thinking...")
 	send(msg, h.TbAPI)
 
 	result, err := h.UserManager.GetAdvice(ctx, userID)
@@ -292,7 +286,7 @@ func (h *BotCallbackQueryHandler) handleSetGoal(query *tbapi.CallbackQuery) {
 		return
 	}
 
-	msg := tbapi.NewMessage(chatID, fmt.Sprintf("Goal set: %s", goalText))
+	msg := tbapi.NewMessage(chatID, fmt.Sprintf("✅ Goal set: <b>%s</b>", html.EscapeString(goalText)))
 	send(msg, h.TbAPI)
 }
 
@@ -311,7 +305,7 @@ func (h *BotCallbackQueryHandler) handleSetModel(query *tbapi.CallbackQuery) {
 		return
 	}
 
-	msg := tbapi.NewMessage(chatID, fmt.Sprintf("Model set: %s", model))
+	msg := tbapi.NewMessage(chatID, fmt.Sprintf("✅ Model set: <b>%s</b>", html.EscapeString(model)))
 	send(msg, h.TbAPI)
 }
 
@@ -358,7 +352,7 @@ func (h *BotCallbackQueryHandler) handleGenTemplate(ctx context.Context, query *
 	h.TbAPI.Request(callback)
 
 	if tplType == "custom" {
-		msg := tbapi.NewMessage(chatID, "Describe the workout you want:\n\nExample: \"Back and biceps with emphasis on pullups\" or \"Arms isolation day\"")
+		msg := tbapi.NewMessage(chatID, "Describe the workout you want:\n\nExample: \"Back and biceps with pullup focus\" or \"Arms isolation day\"")
 		send(msg, h.TbAPI)
 		if h.SetAwaitingCustomTplType != nil {
 			h.SetAwaitingCustomTplType(userID, chatID)
@@ -376,7 +370,7 @@ func (h *BotCallbackQueryHandler) handleGenTemplate(ctx context.Context, query *
 
 // GenerateAndPreview generates a template via LLM and shows a preview with action buttons.
 func (h *BotCallbackQueryHandler) GenerateAndPreview(ctx context.Context, userID, chatID int64, tplType, typeName, extraNotes string) {
-	msg := tbapi.NewMessage(chatID, fmt.Sprintf("Generating %s template...", typeName))
+	msg := tbapi.NewMessage(chatID, fmt.Sprintf("🤖 Generating <b>%s</b> template...", html.EscapeString(typeName)))
 	send(msg, h.TbAPI)
 
 	tmpl, err := h.UserManager.GenerateTemplate(ctx, userID, typeName, extraNotes)
@@ -393,16 +387,17 @@ func (h *BotCallbackQueryHandler) GenerateAndPreview(ctx context.Context, userID
 
 	keyboard := tbapi.NewInlineKeyboardMarkup(
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Push to Hevy", "push_routine"),
-			tbapi.NewInlineKeyboardButtonData("Regenerate", "regen_template"),
+			tbapi.NewInlineKeyboardButtonData("📤 Push to Hevy", "push_routine"),
+			tbapi.NewInlineKeyboardButtonData("🔄 Regenerate", "regen_template"),
 		),
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Regenerate with notes", "regen_with_notes"),
-			tbapi.NewInlineKeyboardButtonData("Back to menu", "back_to_tpl_menu"),
+			tbapi.NewInlineKeyboardButtonData("✏️ Regen with notes", "regen_with_notes"),
+			tbapi.NewInlineKeyboardButtonData("◀️ Back", "back_to_tpl_menu"),
 		),
 	)
 
 	msg = tbapi.NewMessage(chatID, preview)
+	msg.ParseMode = tbapi.ModeHTML
 	msg.ReplyMarkup = keyboard
 	if _, err := h.TbAPI.Send(msg); err != nil {
 		log.Printf("[error] failed to send template preview: %v", err)
@@ -435,7 +430,7 @@ func (h *BotCallbackQueryHandler) handlePushRoutine(ctx context.Context, query *
 
 	h.clearPending(userID)
 
-	msg := tbapi.NewMessage(chatID, fmt.Sprintf("Routine \"%s\" created in Hevy!", pending.template.Title))
+	msg := tbapi.NewMessage(chatID, fmt.Sprintf("✅ Routine \"<b>%s</b>\" created in Hevy!", html.EscapeString(pending.template.Title)))
 	send(msg, h.TbAPI)
 }
 
@@ -475,7 +470,7 @@ func (h *BotCallbackQueryHandler) handleRegenWithNotes(query *tbapi.CallbackQuer
 		return
 	}
 
-	msg := tbapi.NewMessage(chatID, "What would you like to change?\n\nExample: \"More back width exercises, drop the curls\" or \"Add a warmup set for each exercise\"")
+	msg := tbapi.NewMessage(chatID, "What would you like to change?\n\nExample: \"More back exercises, drop the curls\" or \"Add warmup sets\"")
 	send(msg, h.TbAPI)
 
 	if h.SetAwaitingRegenNotes != nil {
@@ -494,26 +489,25 @@ func (h *BotCallbackQueryHandler) handleBackToTemplateMenu(query *tbapi.Callback
 
 	keyboard := tbapi.NewInlineKeyboardMarkup(
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Push Day", "gen_tpl_push"),
-			tbapi.NewInlineKeyboardButtonData("Pull Day", "gen_tpl_pull"),
+			tbapi.NewInlineKeyboardButtonData("Push", "gen_tpl_push"),
+			tbapi.NewInlineKeyboardButtonData("Pull", "gen_tpl_pull"),
+			tbapi.NewInlineKeyboardButtonData("Legs", "gen_tpl_legs"),
 		),
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Leg Day", "gen_tpl_legs"),
 			tbapi.NewInlineKeyboardButtonData("Full Body", "gen_tpl_full"),
+			tbapi.NewInlineKeyboardButtonData("Upper", "gen_tpl_upper"),
+			tbapi.NewInlineKeyboardButtonData("Lower", "gen_tpl_lower"),
 		),
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Upper Body", "gen_tpl_upper"),
-			tbapi.NewInlineKeyboardButtonData("Lower Body", "gen_tpl_lower"),
+			tbapi.NewInlineKeyboardButtonData("🤖 AI Recommends", "gen_tpl_ai"),
 		),
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("AI Recommends", "gen_tpl_ai"),
-		),
-		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Custom...", "gen_tpl_custom"),
+			tbapi.NewInlineKeyboardButtonData("✏️ Custom...", "gen_tpl_custom"),
 		),
 	)
 
-	msg := tbapi.NewMessage(chatID, "Choose workout type:")
+	msg := tbapi.NewMessage(chatID, "<b>Workout Generator</b>\n\nChoose workout type:")
+	msg.ParseMode = tbapi.ModeHTML
 	msg.ReplyMarkup = keyboard
 	if _, err := h.TbAPI.Send(msg); err != nil {
 		log.Printf("[error] failed to send template menu: %v", err)

@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"fmt"
+	"html"
 	"log"
 	"strings"
 	"sync"
@@ -169,7 +170,7 @@ func (h *BotMessageHandler) handleHevyKeyInput(ctx context.Context, userID, chat
 		return true
 	}
 
-	msg := tbapi.NewMessage(chatID, fmt.Sprintf("Hevy account connected! You have %d workout(s).\n\nRun /init to import your workout history.", count))
+	msg := tbapi.NewMessage(chatID, fmt.Sprintf("✅ Hevy account connected! You have <b>%d</b> workouts.\n\nRun /init to import your workout history.", count))
 	send(msg, h.TbAPI)
 	return true
 }
@@ -207,17 +208,21 @@ func (h *BotMessageHandler) handleOpenAIKeyInput(userID, chatID int64, messageID
 	// Show model picker
 	keyboard := tbapi.NewInlineKeyboardMarkup(
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("gpt-4.1-nano (fastest)", "set_model_gpt-4.1-nano"),
+			tbapi.NewInlineKeyboardButtonData("⚡ gpt-4.1-nano (cheapest)", "set_model_gpt-4.1-nano"),
 		),
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("gpt-4.1-mini (recommended)", "set_model_gpt-4.1-mini"),
+			tbapi.NewInlineKeyboardButtonData("⭐ gpt-4.1-mini (recommended)", "set_model_gpt-4.1-mini"),
 		),
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("gpt-4.1 (most capable)", "set_model_gpt-4.1"),
+			tbapi.NewInlineKeyboardButtonData("🧠 gpt-4.1 (smartest)", "set_model_gpt-4.1"),
+		),
+		tbapi.NewInlineKeyboardRow(
+			tbapi.NewInlineKeyboardButtonData("💡 gpt-5-nano (reasoning, cheap)", "set_model_gpt-5-nano"),
 		),
 	)
 
-	msg := tbapi.NewMessage(chatID, "OpenAI key saved! Choose a model:")
+	msg := tbapi.NewMessage(chatID, "✅ API key saved! Choose a model:")
+	msg.ParseMode = tbapi.ModeHTML
 	msg.ReplyMarkup = keyboard
 	if _, err := h.TbAPI.Send(msg); err != nil {
 		log.Printf("[error] failed to send model picker: %v", err)
@@ -251,7 +256,7 @@ func (h *BotMessageHandler) handleNotesInput(userID, chatID int64, text string) 
 		return true
 	}
 
-	msg := tbapi.NewMessage(chatID, fmt.Sprintf("Notes saved: %s", notes))
+	msg := tbapi.NewMessage(chatID, "✅ Notes saved.")
 	send(msg, h.TbAPI)
 	return true
 }
@@ -282,7 +287,7 @@ func (h *BotMessageHandler) handleGoalTextInput(userID, chatID int64, text strin
 		return true
 	}
 
-	msg := tbapi.NewMessage(chatID, fmt.Sprintf("Goal set: %s", goal))
+	msg := tbapi.NewMessage(chatID, fmt.Sprintf("✅ Goal set: <b>%s</b>", html.EscapeString(goal)))
 	send(msg, h.TbAPI)
 	return true
 }
@@ -332,8 +337,6 @@ func (h *BotMessageHandler) handleRegenNotesInput(ctx context.Context, userID, c
 	}
 
 	if h.GenerateAndPreview != nil {
-		// For regen with notes, we don't know the original type from here,
-		// so we pass the notes as extra instructions with a generic type.
 		h.GenerateAndPreview(ctx, userID, chatID, "custom_regen", "workout (same style as the previous attempt)", notes)
 	}
 	return true

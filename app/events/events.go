@@ -58,7 +58,7 @@ type UserManager interface {
 	// AI advice
 	GetAdvice(ctx context.Context, userID int64) (string, error)
 	AskQuestion(ctx context.Context, userID int64, question string) (string, error)
-	GetAnalysisInsights(ctx context.Context, userID int64, analysisText string) (string, error)
+	GetAnalysisInsights(ctx context.Context, userID int64) (string, error)
 
 	// Template generation
 	GenerateTemplate(ctx context.Context, userID int64, workoutType string, extraNotes string) (*llm.TemplateResponse, error)
@@ -83,7 +83,7 @@ func send(tbMsg tbapi.Chattable, tbAPI TbAPI) error {
 		return tbMsg
 	}
 
-	msg := withParseMode(tbMsg, tbapi.ModeMarkdown) // try markdown first
+	msg := withParseMode(tbMsg, tbapi.ModeHTML) // try HTML first
 	if _, err := tbAPI.Send(msg); err != nil {
 		log.Printf("[warn] failed to send message as markdown, %v", err)
 		msg = withParseMode(tbMsg, "") // try plain text

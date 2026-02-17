@@ -260,9 +260,11 @@ func (m *Manager) RunAnalysis(userID int64, reportType string) (string, error) {
 	case "volume":
 		return analysis.FormatVolumeReport(result.Volume), nil
 	case "overload":
-		return analysis.FormatOverloadReport(result.Overload), nil
+		return analysis.FormatOverloadSummary(result.Overload), nil
 	case "balance":
 		return analysis.FormatBalanceReport(result.Balance), nil
+	case "frequency":
+		return analysis.FormatFrequencyReport(result.Frequency), nil
 	default:
 		return analysis.FormatFullReport(result), nil
 	}
@@ -319,17 +321,35 @@ func (m *Manager) AskQuestion(ctx context.Context, userID int64, question string
 	return m.askLLM(ctx, userID, question)
 }
 
-// GetAnalysisInsights sends analysis results to the LLM for natural language interpretation.
-func (m *Manager) GetAnalysisInsights(ctx context.Context, userID int64, analysisText string) (string, error) {
+// GetAnalysisInsights builds a slim training context and gets a brief AI interpretation.
+func (m *Manager) GetAnalysisInsights(ctx context.Context, userID int64) (string, error) {
 	settings, err := m.aiSettings.GetAISettings(userID)
 	if err != nil || settings == nil || settings.OpenAIKey == "" {
 		return "", fmt.Errorf("OpenAI not configured. Use /setup_ai first.")
 	}
 
+	workouts, err := m.workoutStorage.GetAllWorkouts(userID)
+	if err != nil {
+		return "", fmt.Errorf("failed to load workouts: %w", err)
+	}
+	if len(workouts) == 0 {
+		return "", fmt.Errorf("no workouts found. Run /init first.")
+	}
+
+	templates, err := m.exerciseCache.GetAllTemplates()
+	if err != nil {
+		return "", fmt.Errorf("failed to load templates: %w", err)
+	}
+
+	prefs, _ := m.preferences.GetPreferences(userID)
+	result := analysis.Analyze(workouts, templates, 4)
+
+	contextStr := llm.BuildInsightsContext(workouts, templates, prefs, result)
+
 	client := llm.NewClient(settings.OpenAIKey, settings.Model)
 	systemPrompt := llm.CoachSystemPrompt + llm.AnalysisInsightsPrompt
 
-	return client.Chat(ctx, systemPrompt, "Here is the mechanical analysis:\n\n"+analysisText+"\n\nExplain the key findings and give actionable recommendations.")
+	return client.Chat(ctx, systemPrompt, contextStr+"\nGive a brief training checkup.", 500)
 }
 
 func (m *Manager) askLLM(ctx context.Context, userID int64, question string) (string, error) {
@@ -358,7 +378,7 @@ func (m *Manager) askLLM(ctx context.Context, userID int64, question string) (st
 	userMessage := contextStr + "\n" + question
 
 	client := llm.NewClient(settings.OpenAIKey, settings.Model)
-	return client.Chat(ctx, llm.CoachSystemPrompt, userMessage)
+	return client.Chat(ctx, llm.CoachSystemPrompt, userMessage, 0)
 }
 
 // --- Template Generation ---
@@ -398,7 +418,7 @@ func (m *Manager) GenerateTemplate(ctx context.Context, userID int64, workoutTyp
 	systemPrompt := llm.CoachSystemPrompt + llm.TemplateGenerationPrompt
 
 	client := llm.NewClient(settings.OpenAIKey, settings.Model)
-	raw, err := client.Chat(ctx, systemPrompt, userMessage)
+	raw, err := client.Chat(ctx, systemPrompt, userMessage, 0)
 	if err != nil {
 		return nil, fmt.Errorf("LLM request failed: %w", err)
 	}

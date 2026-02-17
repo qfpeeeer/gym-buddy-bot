@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"fmt"
+	"html"
 	"log"
 
 	tbapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -66,27 +67,27 @@ func (h *BotCommandHandler) handleStart(ctx context.Context, chatID, userID int6
 
 	if !connected {
 		rows = append(rows, tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Connect Hevy Account", "connect_hevy"),
+			tbapi.NewInlineKeyboardButtonData("🔗 Connect Hevy", "connect_hevy"),
 		))
 	} else if !synced {
 		rows = append(rows, tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Run Initial Sync", "init_sync"),
+			tbapi.NewInlineKeyboardButtonData("📥 Run Initial Sync", "init_sync"),
 		))
 	} else {
 		aiConfigured, _ := h.UserManager.IsAIConfigured(userID)
 		rows = append(rows,
 			tbapi.NewInlineKeyboardRow(
-				tbapi.NewInlineKeyboardButtonData("Last Workout", "fetch_last"),
-				tbapi.NewInlineKeyboardButtonData("Sync New", "run_sync"),
+				tbapi.NewInlineKeyboardButtonData("🏋️ Last Workout", "fetch_last"),
+				tbapi.NewInlineKeyboardButtonData("🔄 Sync", "run_sync"),
 			),
 			tbapi.NewInlineKeyboardRow(
-				tbapi.NewInlineKeyboardButtonData("Analyze", "show_analyze"),
+				tbapi.NewInlineKeyboardButtonData("📊 Analyze", "show_analyze"),
 			),
 		)
 		if aiConfigured {
 			rows = append(rows,
 				tbapi.NewInlineKeyboardRow(
-					tbapi.NewInlineKeyboardButtonData("AI Advice", "get_advice"),
+					tbapi.NewInlineKeyboardButtonData("🤖 AI Advice", "get_advice"),
 				),
 			)
 		}
@@ -94,16 +95,24 @@ func (h *BotCommandHandler) handleStart(ctx context.Context, chatID, userID int6
 
 	keyboard := tbapi.NewInlineKeyboardMarkup(rows...)
 
-	text := "Welcome to GymBuddy!\n\n"
+	text := "<b>Welcome to GymBuddy</b>\n\n"
 	if !connected {
-		text += "Connect your Hevy account with /connect to unlock workout sync and AI analysis."
+		text += "Connect your Hevy account to unlock workout sync and AI coaching."
 	} else if !synced {
-		text += "Your Hevy account is connected! Run /init to import your workout history."
+		text += "Your Hevy account is connected. Import your workout history to get started."
 	} else {
-		text += "Your Hevy account is connected and synced.\n\nCommands:\n/last — latest workout\n/sync — fetch new workouts\n/analyze — training analysis\n/advice — AI recommendations\n/ask — ask your AI coach\n/template — generate workout template\n/goals — set training goals\n/notes — set training preferences\n/setup_ai — configure OpenAI"
+		text += "/sync — fetch new workouts\n" +
+			"/analyze — training analysis\n" +
+			"/advice — AI recommendations\n" +
+			"/ask — ask your AI coach\n" +
+			"/template — generate workout\n" +
+			"/goals — training goals\n" +
+			"/notes — preferences\n" +
+			"/setup_ai — configure AI"
 	}
 
 	msg := tbapi.NewMessage(chatID, text)
+	msg.ParseMode = tbapi.ModeHTML
 	msg.ReplyMarkup = keyboard
 
 	if _, err := h.TbAPI.Send(msg); err != nil {
@@ -119,7 +128,7 @@ func (h *BotCommandHandler) handleConnect(chatID, userID int64) {
 		return
 	}
 
-	text := "Send me your Hevy API key.\n\nGet it from: hevy.com/settings > Developer section.\nRequires Hevy Pro subscription."
+	text := "Send me your Hevy API key.\n\nGet it from: hevy.com/settings &gt; Developer section.\nRequires Hevy Pro subscription."
 	msg := tbapi.NewMessage(chatID, text)
 	send(msg, h.TbAPI)
 
@@ -143,7 +152,7 @@ func (h *BotCommandHandler) handleDisconnect(chatID, userID int64) {
 		return
 	}
 
-	msg := tbapi.NewMessage(chatID, "Hevy account disconnected.")
+	msg := tbapi.NewMessage(chatID, "✅ Hevy account disconnected.")
 	send(msg, h.TbAPI)
 }
 
@@ -182,9 +191,9 @@ func (h *BotCommandHandler) handleSync(ctx context.Context, chatID, userID int64
 		return
 	}
 
-	text := "Already up to date."
+	text := "✅ Already up to date."
 	if count > 0 {
-		text = fmt.Sprintf("Synced %d new workout(s).", count)
+		text = fmt.Sprintf("✅ Synced %d new workout(s).", count)
 	}
 	msg := tbapi.NewMessage(chatID, text)
 	send(msg, h.TbAPI)
@@ -233,25 +242,26 @@ func (h *BotCommandHandler) handleAnalyze(chatID, userID int64) {
 
 	rows := [][]tbapi.InlineKeyboardButton{
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Volume Report", "analyze_volume"),
-			tbapi.NewInlineKeyboardButtonData("Progressive Overload", "analyze_overload"),
+			tbapi.NewInlineKeyboardButtonData("📊 Volume", "analyze_volume"),
+			tbapi.NewInlineKeyboardButtonData("📈 Overload", "analyze_overload"),
 		),
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Muscle Balance", "analyze_balance"),
-			tbapi.NewInlineKeyboardButtonData("Full Report", "analyze_full"),
+			tbapi.NewInlineKeyboardButtonData("⚖️ Balance", "analyze_balance"),
+			tbapi.NewInlineKeyboardButtonData("🕐 Frequency", "analyze_frequency"),
 		),
 	}
 
 	aiConfigured, _ := h.UserManager.IsAIConfigured(userID)
 	if aiConfigured {
 		rows = append(rows, tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("AI Insights", "ai_insights"),
+			tbapi.NewInlineKeyboardButtonData("🤖 AI Insights", "ai_insights"),
 		))
 	}
 
 	keyboard := tbapi.NewInlineKeyboardMarkup(rows...)
 
-	msg := tbapi.NewMessage(chatID, "Choose analysis type:")
+	msg := tbapi.NewMessage(chatID, "<b>Training Analysis</b>\n\nChoose report type:")
+	msg.ParseMode = tbapi.ModeHTML
 	msg.ReplyMarkup = keyboard
 
 	if _, err := h.TbAPI.Send(msg); err != nil {
@@ -261,8 +271,8 @@ func (h *BotCommandHandler) handleAnalyze(chatID, userID int64) {
 
 func formatWorkout(w *hevy.Workout) string {
 	duration := w.EndTime.Sub(w.StartTime)
-	text := fmt.Sprintf("%s\n%s | %d min\n",
-		w.Title,
+	text := fmt.Sprintf("<b>%s</b>\n%s · %d min\n",
+		html.EscapeString(w.Title),
 		w.StartTime.Format("Mon, 2 Jan 2006 15:04"),
 		int(duration.Minutes()),
 	)
@@ -271,7 +281,7 @@ func formatWorkout(w *hevy.Workout) string {
 	totalVolume := 0.0
 
 	for _, ex := range w.Exercises {
-		text += fmt.Sprintf("\n  %s", ex.Title)
+		text += fmt.Sprintf("\n<b>%s</b>", html.EscapeString(ex.Title))
 		for _, s := range ex.Sets {
 			totalSets++
 			weight := 0.0
@@ -285,11 +295,11 @@ func formatWorkout(w *hevy.Workout) string {
 			totalVolume += weight * float64(reps)
 
 			if weight > 0 && reps > 0 {
-				text += fmt.Sprintf("\n    %s: %.1f kg x %d", s.Type, weight, reps)
+				text += fmt.Sprintf("\n  %s: %.1f kg × %d", s.Type, weight, reps)
 			} else if reps > 0 {
-				text += fmt.Sprintf("\n    %s: %d reps", s.Type, reps)
+				text += fmt.Sprintf("\n  %s: %d reps", s.Type, reps)
 			} else if s.DurationSeconds != nil && *s.DurationSeconds > 0 {
-				text += fmt.Sprintf("\n    %s: %ds", s.Type, *s.DurationSeconds)
+				text += fmt.Sprintf("\n  %s: %ds", s.Type, *s.DurationSeconds)
 			}
 			if s.RPE != nil && *s.RPE > 0 {
 				text += fmt.Sprintf(" @RPE %.0f", *s.RPE)
@@ -297,7 +307,7 @@ func formatWorkout(w *hevy.Workout) string {
 		}
 	}
 
-	text += fmt.Sprintf("\n\nTotal: %d sets, %.0f kg volume", totalSets, totalVolume)
+	text += fmt.Sprintf("\n\n<b>Total:</b> %d sets · %.0f kg volume", totalSets, totalVolume)
 	return text
 }
 
@@ -312,12 +322,15 @@ func formatVolumeComparison(current, previous *hevy.Workout) string {
 	diff := currentVol - previousVol
 	pct := (diff / previousVol) * 100
 
+	icon := "📈"
 	sign := "+"
 	if diff < 0 {
+		icon = "📉"
 		sign = ""
 	}
 
-	return fmt.Sprintf("vs previous %s: %s%.0f kg (%s%.1f%%)",
+	return fmt.Sprintf("%s vs %s: %s%.0f kg (%s%.1f%%)",
+		icon,
 		previous.StartTime.Format("2 Jan"),
 		sign, diff, sign, pct)
 }
@@ -347,25 +360,26 @@ func (h *BotCommandHandler) handleSetupAI(chatID, userID int64) {
 func (h *BotCommandHandler) handleGoals(chatID, userID int64) {
 	keyboard := tbapi.NewInlineKeyboardMarkup(
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Hypertrophy", "set_goal_hypertrophy"),
-			tbapi.NewInlineKeyboardButtonData("Strength", "set_goal_strength"),
+			tbapi.NewInlineKeyboardButtonData("💪 Hypertrophy", "set_goal_hypertrophy"),
+			tbapi.NewInlineKeyboardButtonData("🏋️ Strength", "set_goal_strength"),
 		),
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Endurance", "set_goal_endurance"),
-			tbapi.NewInlineKeyboardButtonData("Recomp", "set_goal_recomp"),
+			tbapi.NewInlineKeyboardButtonData("🏃 Endurance", "set_goal_endurance"),
+			tbapi.NewInlineKeyboardButtonData("⚖️ Recomp", "set_goal_recomp"),
 		),
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Custom...", "set_goal_custom"),
+			tbapi.NewInlineKeyboardButtonData("✏️ Custom...", "set_goal_custom"),
 		),
 	)
 
 	prefs, _ := h.UserManager.GetPreferences(userID)
-	text := "Choose your training goal:"
+	text := "<b>Training Goals</b>\n\nChoose a new goal:"
 	if prefs != nil && prefs.Goals != "" {
-		text = fmt.Sprintf("Current goal: %s\n\nChoose a new goal:", prefs.Goals)
+		text = fmt.Sprintf("<b>Training Goals</b>\n\nCurrent: %s\n\nChoose a new goal:", html.EscapeString(prefs.Goals))
 	}
 
 	msg := tbapi.NewMessage(chatID, text)
+	msg.ParseMode = tbapi.ModeHTML
 	msg.ReplyMarkup = keyboard
 	if _, err := h.TbAPI.Send(msg); err != nil {
 		log.Printf("[error] failed to send goals menu: %v", err)
@@ -376,7 +390,7 @@ func (h *BotCommandHandler) handleNotes(chatID, userID int64) {
 	prefs, _ := h.UserManager.GetPreferences(userID)
 	text := "Send me your training notes/preferences.\n\nExamples:\n- \"Focusing on back width and tricep mass\"\n- \"Weak hamstrings, want to bring them up\"\n- \"Prefer compound movements, avoid machines\""
 	if prefs != nil && prefs.Notes != "" {
-		text = fmt.Sprintf("Current notes: %s\n\n%s", prefs.Notes, text)
+		text = fmt.Sprintf("<b>Current:</b> %s\n\n%s", html.EscapeString(prefs.Notes), text)
 	}
 
 	msg := tbapi.NewMessage(chatID, text)
@@ -402,7 +416,7 @@ func (h *BotCommandHandler) handleAdvice(ctx context.Context, chatID, userID int
 		return
 	}
 
-	msg := tbapi.NewMessage(chatID, "Thinking...")
+	msg := tbapi.NewMessage(chatID, "🤖 Thinking...")
 	send(msg, h.TbAPI)
 
 	result, err := h.UserManager.GetAdvice(ctx, userID)
@@ -434,26 +448,25 @@ func (h *BotCommandHandler) handleTemplate(chatID, userID int64) {
 
 	keyboard := tbapi.NewInlineKeyboardMarkup(
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Push Day", "gen_tpl_push"),
-			tbapi.NewInlineKeyboardButtonData("Pull Day", "gen_tpl_pull"),
+			tbapi.NewInlineKeyboardButtonData("Push", "gen_tpl_push"),
+			tbapi.NewInlineKeyboardButtonData("Pull", "gen_tpl_pull"),
+			tbapi.NewInlineKeyboardButtonData("Legs", "gen_tpl_legs"),
 		),
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Leg Day", "gen_tpl_legs"),
 			tbapi.NewInlineKeyboardButtonData("Full Body", "gen_tpl_full"),
+			tbapi.NewInlineKeyboardButtonData("Upper", "gen_tpl_upper"),
+			tbapi.NewInlineKeyboardButtonData("Lower", "gen_tpl_lower"),
 		),
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Upper Body", "gen_tpl_upper"),
-			tbapi.NewInlineKeyboardButtonData("Lower Body", "gen_tpl_lower"),
+			tbapi.NewInlineKeyboardButtonData("🤖 AI Recommends", "gen_tpl_ai"),
 		),
 		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("AI Recommends", "gen_tpl_ai"),
-		),
-		tbapi.NewInlineKeyboardRow(
-			tbapi.NewInlineKeyboardButtonData("Custom...", "gen_tpl_custom"),
+			tbapi.NewInlineKeyboardButtonData("✏️ Custom...", "gen_tpl_custom"),
 		),
 	)
 
-	msg := tbapi.NewMessage(chatID, "Choose workout type:")
+	msg := tbapi.NewMessage(chatID, "<b>Workout Generator</b>\n\nChoose workout type:")
+	msg.ParseMode = tbapi.ModeHTML
 	msg.ReplyMarkup = keyboard
 	if _, err := h.TbAPI.Send(msg); err != nil {
 		log.Printf("[error] failed to send template menu: %v", err)
@@ -462,7 +475,7 @@ func (h *BotCommandHandler) handleTemplate(chatID, userID int64) {
 
 func (h *BotCommandHandler) handleAsk(ctx context.Context, chatID, userID int64, question string) {
 	if question == "" {
-		msg := tbapi.NewMessage(chatID, "Usage: /ask <your question>\n\nExample: /ask Should I deload this week?")
+		msg := tbapi.NewMessage(chatID, "Usage: /ask &lt;your question&gt;\n\nExample: /ask Should I deload this week?")
 		send(msg, h.TbAPI)
 		return
 	}
@@ -481,7 +494,7 @@ func (h *BotCommandHandler) handleAsk(ctx context.Context, chatID, userID int64,
 		return
 	}
 
-	msg := tbapi.NewMessage(chatID, "Thinking...")
+	msg := tbapi.NewMessage(chatID, "🤖 Thinking...")
 	send(msg, h.TbAPI)
 
 	result, err := h.UserManager.AskQuestion(ctx, userID, question)

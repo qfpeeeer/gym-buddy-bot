@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"fmt"
+	"html"
 	"sort"
 	"strings"
 	"time"
@@ -39,27 +40,27 @@ func FormatVolumeReport(r *VolumeReport) string {
 	}
 
 	var b strings.Builder
-	b.WriteString("Weekly Volume by Muscle Group\n\n")
+	b.WriteString("<b>Weekly Volume</b>\n\n")
 
 	for _, m := range r.Muscles {
 		icon := ""
 		switch m.Status {
 		case "low":
-			icon = "[-]"
+			icon = "🟡"
 		case "optimal":
-			icon = "[+]"
+			icon = "🟢"
 		case "high":
-			icon = "[!]"
+			icon = "🔴"
 		}
 		b.WriteString(fmt.Sprintf("%s %s: %.1f sets/wk",
-			icon, formatMuscle(m.Muscle), m.WeeklySets))
+			icon, html.EscapeString(formatMuscle(m.Muscle)), m.WeeklySets))
 		if m.WeeklyTonnage > 0 {
 			b.WriteString(fmt.Sprintf(" (%.0f kg)", m.WeeklyTonnage))
 		}
 		b.WriteString("\n")
 	}
 
-	b.WriteString("\n[-] = low (<10 sets/wk)\n[+] = optimal (10-20)\n[!] = high (>20)")
+	b.WriteString("\n🟡 &lt;10 sets · 🟢 10-20 · 🔴 &gt;20")
 	return b.String()
 }
 
@@ -70,9 +71,8 @@ func FormatOverloadReport(r *OverloadReport) string {
 	}
 
 	var b strings.Builder
-	b.WriteString("Progressive Overload Trends\n\n")
+	b.WriteString("<b>Progressive Overload</b>\n\n")
 
-	// Group by trend
 	progressing := []ExerciseProgress{}
 	stalling := []ExerciseProgress{}
 	regressing := []ExerciseProgress{}
@@ -89,29 +89,65 @@ func FormatOverloadReport(r *OverloadReport) string {
 	}
 
 	if len(progressing) > 0 {
-		b.WriteString("[UP] Progressing:\n")
+		b.WriteString("📈 <b>Progressing</b>\n")
 		for _, ex := range progressing {
 			b.WriteString(fmt.Sprintf("  %s: e1RM %.1f kg (best: %.1f)\n",
-				ex.ExerciseName, ex.LatestE1RM, ex.BestE1RM))
+				html.EscapeString(ex.ExerciseName), ex.LatestE1RM, ex.BestE1RM))
 		}
 		b.WriteString("\n")
 	}
 
 	if len(stalling) > 0 {
-		b.WriteString("[--] Stalling:\n")
+		b.WriteString("➡️ <b>Stalling</b>\n")
 		for _, ex := range stalling {
 			b.WriteString(fmt.Sprintf("  %s: e1RM %.1f kg (best: %.1f)\n",
-				ex.ExerciseName, ex.LatestE1RM, ex.BestE1RM))
+				html.EscapeString(ex.ExerciseName), ex.LatestE1RM, ex.BestE1RM))
 		}
 		b.WriteString("\n")
 	}
 
 	if len(regressing) > 0 {
-		b.WriteString("[DN] Regressing:\n")
+		b.WriteString("📉 <b>Regressing</b>\n")
 		for _, ex := range regressing {
 			b.WriteString(fmt.Sprintf("  %s: e1RM %.1f kg (best: %.1f)\n",
-				ex.ExerciseName, ex.LatestE1RM, ex.BestE1RM))
+				html.EscapeString(ex.ExerciseName), ex.LatestE1RM, ex.BestE1RM))
 		}
+	}
+
+	return b.String()
+}
+
+// FormatOverloadSummary formats a condensed overload summary for Telegram (names only, no e1RM).
+func FormatOverloadSummary(r *OverloadReport) string {
+	if r == nil || len(r.Exercises) == 0 {
+		return "No progressive overload data available."
+	}
+
+	var progressing, stalling, regressing []string
+
+	for _, ex := range r.Exercises {
+		name := html.EscapeString(ex.ExerciseName)
+		switch ex.Trend {
+		case "progressing":
+			progressing = append(progressing, name)
+		case "stalling":
+			stalling = append(stalling, name)
+		case "regressing":
+			regressing = append(regressing, name)
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString("<b>Progressive Overload</b>\n\n")
+
+	if len(progressing) > 0 {
+		b.WriteString(fmt.Sprintf("📈 <b>Progressing (%d):</b> %s\n", len(progressing), strings.Join(progressing, ", ")))
+	}
+	if len(stalling) > 0 {
+		b.WriteString(fmt.Sprintf("➡️ <b>Stalling (%d):</b> %s\n", len(stalling), strings.Join(stalling, ", ")))
+	}
+	if len(regressing) > 0 {
+		b.WriteString(fmt.Sprintf("📉 <b>Regressing (%d):</b> %s\n", len(regressing), strings.Join(regressing, ", ")))
 	}
 
 	return b.String()
@@ -124,7 +160,7 @@ func FormatBalanceReport(r *BalanceReport) string {
 	}
 
 	var b strings.Builder
-	b.WriteString("Muscle Balance\n\n")
+	b.WriteString("<b>Muscle Balance</b>\n\n")
 
 	b.WriteString(fmt.Sprintf("Push: %.1f sets/wk\n", r.PushSets))
 	b.WriteString(fmt.Sprintf("Pull: %.1f sets/wk\n", r.PullSets))
@@ -139,12 +175,12 @@ func FormatBalanceReport(r *BalanceReport) string {
 	}
 
 	if len(r.Flags) > 0 {
-		b.WriteString("\nWarnings:\n")
+		b.WriteString("\n⚠️ <b>Warnings:</b>\n")
 		for _, f := range r.Flags {
 			b.WriteString(fmt.Sprintf("  %s\n", f))
 		}
 	} else {
-		b.WriteString("\nBalance looks good!")
+		b.WriteString("\n✅ Balance looks good!")
 	}
 
 	return b.String()
@@ -157,14 +193,14 @@ func FormatFrequencyReport(r *FrequencyReport) string {
 	}
 
 	var b strings.Builder
-	b.WriteString("Training Frequency\n\n")
+	b.WriteString("<b>Training Frequency</b>\n\n")
 
 	b.WriteString(fmt.Sprintf("Workouts/week: %.1f\n", r.WorkoutsPerWeek))
 	b.WriteString(fmt.Sprintf("Avg session: %.0f min\n", r.AvgSessionMinutes))
-	b.WriteString(fmt.Sprintf("Avg rest between sessions: %.1f days\n", r.AvgRestDays))
+	b.WriteString(fmt.Sprintf("Avg rest: %.1f days\n", r.AvgRestDays))
 
 	if len(r.MuscleFrequency) > 0 {
-		b.WriteString("\nMuscle frequency (sessions/wk):\n")
+		b.WriteString("\n<b>Muscle frequency</b> (sessions/wk):\n")
 
 		type mf struct {
 			muscle string
@@ -179,7 +215,7 @@ func FormatFrequencyReport(r *FrequencyReport) string {
 		})
 
 		for _, m := range sorted {
-			b.WriteString(fmt.Sprintf("  %s: %.1f\n", formatMuscle(m.muscle), m.freq))
+			b.WriteString(fmt.Sprintf("  %s: %.1f\n", html.EscapeString(formatMuscle(m.muscle)), m.freq))
 		}
 	}
 
@@ -193,9 +229,7 @@ func FormatFullReport(r *AnalysisResult) string {
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Full Report (%s)\n", r.Period))
-	b.WriteString(strings.Repeat("=", 30))
-	b.WriteString("\n\n")
+	b.WriteString(fmt.Sprintf("<b>Full Report</b> (%s)\n\n", r.Period))
 
 	b.WriteString(FormatFrequencyReport(r.Frequency))
 	b.WriteString("\n\n")

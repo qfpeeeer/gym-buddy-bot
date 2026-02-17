@@ -3,6 +3,7 @@ package llm
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"strings"
 
 	"github.com/qfpeeeer/gym-buddy-bot/app/hevy"
@@ -86,17 +87,17 @@ func ValidateAndFixTemplate(t *TemplateResponse, templates []hevy.ExerciseTempla
 	return nil
 }
 
-// FormatTemplatePreview renders a template as Telegram-friendly text.
+// FormatTemplatePreview renders a template as Telegram-friendly HTML text.
 func FormatTemplatePreview(t *TemplateResponse) string {
 	var b strings.Builder
-	b.WriteString(t.Title + "\n")
+	b.WriteString(fmt.Sprintf("<b>%s</b>\n", html.EscapeString(t.Title)))
 
 	for _, ex := range t.Exercises {
-		b.WriteString(fmt.Sprintf("\n  %s\n", ex.Title))
+		b.WriteString(fmt.Sprintf("\n<b>%s</b>\n", html.EscapeString(ex.Title)))
 		for _, s := range ex.Sets {
-			line := fmt.Sprintf("    %s:", s.Type)
+			line := fmt.Sprintf("  %s:", s.Type)
 			if s.WeightKG > 0 {
-				line += fmt.Sprintf(" %.0fkg x %d", s.WeightKG, s.Reps)
+				line += fmt.Sprintf(" %.0fkg × %d", s.WeightKG, s.Reps)
 			} else if s.Reps > 0 {
 				line += fmt.Sprintf(" %d reps", s.Reps)
 			}
@@ -112,13 +113,12 @@ func FormatTemplatePreview(t *TemplateResponse) string {
 
 // ToCreateRoutineRequest converts a template to a Hevy CreateRoutineRequest.
 func ToCreateRoutineRequest(t *TemplateResponse) hevy.CreateRoutineRequest {
-	exercises := make([]hevy.RoutineExercise, len(t.Exercises))
+	exercises := make([]hevy.CreateRoutineExercise, len(t.Exercises))
 	for i, ex := range t.Exercises {
-		sets := make([]hevy.RoutineSet, len(ex.Sets))
+		sets := make([]hevy.CreateRoutineSet, len(ex.Sets))
 		for j, s := range ex.Sets {
-			set := hevy.RoutineSet{
-				Index: j,
-				Type:  s.Type,
+			set := hevy.CreateRoutineSet{
+				Type: s.Type,
 			}
 			if s.Reps > 0 {
 				reps := s.Reps
@@ -131,9 +131,7 @@ func ToCreateRoutineRequest(t *TemplateResponse) hevy.CreateRoutineRequest {
 			sets[j] = set
 		}
 
-		exercises[i] = hevy.RoutineExercise{
-			Index:              i,
-			Title:              ex.Title,
+		exercises[i] = hevy.CreateRoutineExercise{
 			ExerciseTemplateID: ex.ExerciseTemplateID,
 			Sets:               sets,
 		}
@@ -142,6 +140,8 @@ func ToCreateRoutineRequest(t *TemplateResponse) hevy.CreateRoutineRequest {
 	return hevy.CreateRoutineRequest{
 		Routine: hevy.CreateRoutineBody{
 			Title:     t.Title,
+			Notes:     "",
+			FolderID:  nil,
 			Exercises: exercises,
 		},
 	}
